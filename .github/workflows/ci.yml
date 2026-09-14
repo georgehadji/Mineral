@@ -1,0 +1,58 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  python:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/analytics
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --extra dev
+      - run: uv run pytest
+
+  schema:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: mineral
+          POSTGRES_DB: mineral
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 3s --health-retries 10
+    env:
+      PGPASSWORD: mineral
+      PSQL: psql -h localhost -U postgres -d mineral -v ON_ERROR_STOP=1
+    steps:
+      - uses: actions/checkout@v4
+      - name: apply migration
+        run: |
+          sed -n '/-- migrate:up/,/-- migrate:down/p' \
+            packages/db/migrations/20260914000000_schema_v1_1.sql | sed '$d' | $PSQL
+      - name: run invariant tests
+        run: $PSQL -f packages/db/tests/schema_v1_1.test.sql

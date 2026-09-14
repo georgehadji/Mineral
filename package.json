@@ -1,0 +1,22 @@
+{
+  "name": "mineral",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:up": "dbmate --migrations-dir packages/db/migrations up",
+    "db:down": "dbmate --migrations-dir packages/db/migrations down",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

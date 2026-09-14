@@ -1,0 +1,41 @@
+# Recipe = ordered set of (module code, version). Dependencies are NOT restated
+# here; they live in packages/research/src/modules.ts and the DAG is derived and
+# validated at load (report I.18). File names are kebab-case, module codes are
+# snake_case because they are persisted (report I.25).
+id: company_deep_research
+version: 2.0.0
+subject: company
+depth: standard
+
+# Checked before the evidence snapshot is taken. A run without ingested
+# evidence would produce confident UNKNOWN answers (report I.23).
+preconditions:
+  - entity_resolved
+  - evidence_ingested
+
+modules:
+  - { code: entity_resolution, version: 1.0.0 }
+  - { code: company_profile, version: 1.0.0 }
+  - { code: business_model, version: 1.0.0 }
+  - { code: industry_position, version: 1.0.0 }
+  - { code: commodity_exposure, version: 1.0.0 }
+  - { code: supply_chain_position, version: 1.0.0 }
+  - { code: project_pipeline, version: 1.0.0 }
+  - { code: financial_quality, version: 1.0.0 }
+  - { code: capital_structure, version: 1.0.0 }
+  - { code: management, version: 1.0.0 }
+  - { code: competitive_landscape, version: 1.0.0 }
+  - { code: risks, version: 1.0.0 }
+  - { code: catalysts, version: 1.0.0 }
+  # Valuation split so no LLM computes a number (rule 6, report I.22):
+  # propose -> deterministic policy -> Python calculation -> scenarios.
+  - { code: valuation_assumptions, version: 1.0.0 }
+  - { code: assumption_policy, version: 1.0.0 }
+  - { code: valuation_calc, version: 1.0.0 }
+  - { code: scenario_model, version: 1.0.0 }
+  # Structured disagreement (brief sections 11 and 13, report I.24).
+  - { code: bear_case, version: 1.0.0 }
+  - { code: contradiction_check, version: 1.0.0 }
+  - { code: numerical_check, version: 1.0.0 }
+  - { code: source_check, version: 1.0.0 }
+  - { code: final_synthesis, version: 1.0.0 }

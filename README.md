@@ -8,16 +8,36 @@ Evidence before prose. Deterministic calculations before LLM conclusions. Versio
 
 | Path | Purpose |
 |---|---|
-| `docs/spec/` | Authoritative product and architecture spec (brief, rules, original schema draft, domain types, events, recipe) |
-| `docs/architecture/` | Architecture understanding report and decisions |
+| `docs/spec/` | Frozen product and architecture spec (brief, rules, original schema draft, domain types, events, recipe) |
+| `docs/architecture/` | Architecture understanding report and layout decisions |
 | `docs/domain/` | Domain semantics (time axes, epistemic status, source tiers) |
-| `packages/db/migrations/` | PostgreSQL schema, plain SQL, dbmate format |
-| `packages/db/tests/` | Schema invariant checks, plain SQL |
+| `packages/domain/` | Canonical TypeScript types, no runtime dependencies |
+| `packages/events/` | Versioned event envelope and payload contracts |
+| `packages/schemas/` | Zod mirrors, parsed at every trust boundary |
+| `packages/research/` | Module registry, recipes, DAG derivation |
+| `packages/db/` | PostgreSQL schema (dbmate format) and SQL invariant tests |
+| `services/analytics/` | Python deterministic calculations |
+| `infra/docker/` | Local PostgreSQL |
+
+## Development
+
+Requires Node 20 or newer with pnpm 9, Python 3.12 with uv, and PostgreSQL 16 or Docker.
+
+```bash
+pnpm install && pnpm check
+```
+
+```bash
+cd services/analytics && uv sync --extra dev && uv run pytest
+```
+
+`pnpm check` runs the TypeScript typecheck and the Vitest suite. Verified locally:
+26 TypeScript tests and 11 Python tests pass.
 
 ## Schema check
 
 ```bash
-docker run -d --name mineral-pg -e POSTGRES_PASSWORD=mineral -p 55432:5432 postgres:16
+docker compose -f infra/docker/docker-compose.yml up -d
 ```
 
 ```bash
@@ -40,4 +60,4 @@ Then run the migration and test with `psql -h localhost -p 55432 -U postgres -d 
 
 ## Implementation sequence
 
-See `docs/architecture/00-architecture-understanding.md` §J. Next phase: bootstrap (pnpm workspace, TS strict, Vitest, dbmate, Python analytics with uv + pytest).
+See `docs/architecture/00-architecture-understanding.md` §J. Phases 0 and 1 (contracts half) are done. Next: phase 2, identity and entity resolution, seeded with MP Materials.

@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { buildDag, RecipeError } from './dag.js';
-import { MODULE_REGISTRY, MODULES_BY_CODE, type ModuleDecl } from './modules.js';
-import { parseRecipe, type Recipe } from './recipe.js';
+import { buildDag, RecipeError } from './dag.ts';
+import { MODULE_REGISTRY, MODULES_BY_CODE, type ModuleDecl } from './modules.ts';
+import { parseRecipe, type Recipe } from './recipe.ts';
 
 const recipePath = fileURLToPath(
   new URL('../recipes/company-deep-research.yaml', import.meta.url),

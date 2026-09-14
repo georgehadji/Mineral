@@ -4,7 +4,7 @@ import {
   ProposedClaimSchema,
   ResearchModuleOutputSchema,
   strongestSupportedStatus,
-} from './index.js';
+} from './index.ts';
 
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 

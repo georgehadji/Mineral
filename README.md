@@ -15,7 +15,8 @@ Evidence before prose. Deterministic calculations before LLM conclusions. Versio
 | `packages/events/` | Versioned event envelope and payload contracts |
 | `packages/schemas/` | Zod mirrors, parsed at every trust boundary |
 | `packages/research/` | Module registry, recipes, DAG derivation |
-| `packages/db/` | PostgreSQL schema (dbmate format) and SQL invariant tests |
+| `packages/identity/` | Identifier normalisation and resolution planning |
+| `packages/db/` | PostgreSQL schema, seeds, SQL invariant tests, SQL-first repositories |
 | `services/analytics/` | Python deterministic calculations |
 | `infra/docker/` | Local PostgreSQL |
 
@@ -31,8 +32,27 @@ pnpm install && pnpm check
 cd services/analytics && uv sync --extra dev && uv run pytest
 ```
 
-`pnpm check` runs the TypeScript typecheck and the Vitest suite. Verified locally:
-26 TypeScript tests and 11 Python tests pass.
+`pnpm check` runs the TypeScript typecheck and the Vitest suite. Database-backed
+tests are skipped unless `DATABASE_URL` is set, so the default run is hermetic.
+Verified locally: 48 hermetic tests, 57 with a database, and 11 Python tests.
+
+## Entity resolution
+
+Apply the migration, then the issuer seed:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f packages/db/seeds/001-rare-earth-issuers.sql
+```
+
+```bash
+pnpm resolve "MP"
+```
+
+Resolution walks a ladder from exact registry identifier to name prefix and
+reports which strategy matched. A query that matches several companies is
+returned as ambiguous rather than resolved to a guess. Every CIK in the seed
+comes from the SEC registry file; fields that could not be verified against a
+primary source are left null.
 
 ## Schema check
 

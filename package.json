@@ -12,7 +12,9 @@
     "test:watch": "vitest",
     "db:up": "dbmate --migrations-dir packages/db/migrations up",
     "db:down": "dbmate --migrations-dir packages/db/migrations down",
-    "check": "pnpm typecheck && pnpm test"
+    "check": "pnpm typecheck && pnpm test",
+    "resolve": "node packages/db/src/resolve-cli.ts",
+    "db:seed": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f packages/db/seeds/001-rare-earth-issuers.sql"
   },
   "devDependencies": {
     "@types/node": "^22",

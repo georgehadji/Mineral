@@ -1,5 +1,5 @@
-import { MODULES_BY_CODE, type ModuleDecl } from './modules.js';
-import type { Recipe } from './recipe.js';
+import { MODULES_BY_CODE, type ModuleDecl } from './modules.ts';
+import type { Recipe } from './recipe.ts';
 
 export class RecipeError extends Error {
   constructor(message: string) {

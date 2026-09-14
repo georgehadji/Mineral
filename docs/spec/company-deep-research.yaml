@@ -1,0 +1,45 @@
+recipe:
+  id: company-deep-research
+  version: 1.0.0
+  subject: company
+  depth: standard
+
+modules:
+  - id: entity-resolution
+    depends_on: []
+  - id: company-profile
+    depends_on: [entity-resolution]
+  - id: business-model
+    depends_on: [company-profile]
+  - id: industry-position
+    depends_on: [company-profile, business-model]
+  - id: commodity-exposure
+    depends_on: [company-profile, business-model]
+  - id: supply-chain-position
+    depends_on: [commodity-exposure, industry-position]
+  - id: project-pipeline
+    depends_on: [supply-chain-position]
+  - id: financial-quality
+    depends_on: [company-profile]
+  - id: capital-structure
+    depends_on: [financial-quality]
+  - id: management
+    depends_on: [company-profile, financial-quality]
+  - id: competitive-landscape
+    depends_on: [industry-position, supply-chain-position]
+  - id: risks
+    depends_on: [financial-quality, supply-chain-position, competitive-landscape]
+  - id: catalysts
+    depends_on: [project-pipeline, competitive-landscape]
+  - id: valuation
+    depends_on: [financial-quality, capital-structure]
+  - id: scenario-model
+    depends_on: [valuation, project-pipeline, commodity-exposure]
+  - id: contradiction-check
+    depends_on: [company-profile, financial-quality, competitive-landscape, risks, catalysts]
+  - id: numerical-check
+    depends_on: [financial-quality, valuation, scenario-model]
+  - id: source-check
+    depends_on: [company-profile, financial-quality, competitive-landscape, risks, catalysts]
+  - id: final-synthesis
+    depends_on: [contradiction-check, numerical-check, source-check, scenario-model]

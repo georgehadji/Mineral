@@ -11,6 +11,8 @@ export default defineConfig({
       '@mineral/events': pkg('events'),
       '@mineral/schemas': pkg('schemas'),
       '@mineral/research': pkg('research'),
+      '@mineral/ingest': pkg('ingest'),
+      '@mineral/identity': pkg('identity'),
     },
   },
   test: {

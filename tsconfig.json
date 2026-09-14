@@ -28,6 +28,9 @@
       ],
       "@mineral/research": [
         "packages/research/src/index.ts"
+      ],
+      "@mineral/ingest": [
+        "packages/ingest/src/index.ts"
       ]
     },
     "allowImportingTsExtensions": true

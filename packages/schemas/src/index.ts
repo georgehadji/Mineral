@@ -32,6 +32,8 @@ export const EpistemicStatusSchema = z.enum([
   'STALE',
 ]);
 
+export type EpistemicStatus = z.infer<typeof EpistemicStatusSchema>;
+
 export const SourceTierSchema = z.union([
   z.literal(1),
   z.literal(2),
@@ -122,6 +124,39 @@ export function strongestSupportedStatus(evidence: readonly EvidenceInput[]): st
     if (best === null || STATUS_RANK[capped]! > STATUS_RANK[best]!) best = capped;
   }
   return best;
+}
+
+export type FactExtractionMethod = 'xbrl' | 'provider' | 'manual' | 'llm' | 'calculated';
+export type FactRevisionStatus = 'candidate' | 'promoted' | 'rejected' | 'superseded';
+
+export interface FactStatusInput {
+  extractionMethod: FactExtractionMethod;
+  sourceTier: 1 | 2 | 3 | 4 | 5;
+  status: FactRevisionStatus;
+  /** Verbatim span the value was read from, where the method needs one. */
+  quote?: string | null;
+}
+
+/**
+ * Epistemic status of one stored fact revision. Same ceiling as claims: the
+ * source tier caps what a value may be called, and an LLM reading with no
+ * verbatim quote cannot reach VERIFIED (rule 14). A value that has not been
+ * promoted is not part of the record, whatever its source.
+ */
+export function factEpistemicStatus(input: FactStatusInput): EpistemicStatus {
+  switch (input.status) {
+    case 'candidate':
+      return 'HYPOTHESIS';
+    case 'rejected':
+      return 'UNKNOWN';
+    case 'superseded':
+      return 'STALE';
+    default:
+      break;
+  }
+  if (input.extractionMethod === 'calculated') return 'CALCULATED';
+  if (input.extractionMethod === 'llm' && !input.quote) return 'INFERRED';
+  return MAX_STATUS_BY_TIER[input.sourceTier];
 }
 
 export const ProposedClaimSchema = z

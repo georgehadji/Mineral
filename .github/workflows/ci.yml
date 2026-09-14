@@ -50,10 +50,11 @@ jobs:
       PSQL: psql -h localhost -U postgres -d mineral -v ON_ERROR_STOP=1
     steps:
       - uses: actions/checkout@v4
-      - name: apply migration
+      - name: apply migrations
         run: |
-          sed -n '/-- migrate:up/,/-- migrate:down/p' \
-            packages/db/migrations/20260914000000_schema_v1_1.sql | sed '$d' | $PSQL
+          for f in packages/db/migrations/*.sql; do
+            sed -n '/-- migrate:up/,/-- migrate:down/p' "$f" | sed '$d'
+          done | $PSQL
       - name: run invariant tests
         run: $PSQL -f packages/db/tests/schema_v1_1.test.sql
       - name: seed issuers

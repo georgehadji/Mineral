@@ -7,6 +7,8 @@
   "dependencies": {
     "@mineral/domain": "workspace:*",
     "@mineral/identity": "workspace:*",
+    "@mineral/ingest": "workspace:*",
+    "@mineral/schemas": "workspace:*",
     "pg": "^8.13.1"
   },
   "devDependencies": {

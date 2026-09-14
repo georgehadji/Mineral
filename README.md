@@ -16,6 +16,7 @@ Evidence before prose. Deterministic calculations before LLM conclusions. Versio
 | `packages/schemas/` | Zod mirrors, parsed at every trust boundary |
 | `packages/research/` | Module registry, recipes, DAG derivation |
 | `packages/identity/` | Identifier normalisation and resolution planning |
+| `packages/ingest/` | SEC EDGAR connector, XBRL concept map, content hashing and chunking |
 | `packages/db/` | PostgreSQL schema, seeds, SQL invariant tests, SQL-first repositories |
 | `services/analytics/` | Python deterministic calculations |
 | `infra/docker/` | Local PostgreSQL |
@@ -34,7 +35,7 @@ cd services/analytics && uv sync --extra dev && uv run pytest
 
 `pnpm check` runs the TypeScript typecheck and the Vitest suite. Database-backed
 tests are skipped unless `DATABASE_URL` is set, so the default run is hermetic.
-Verified locally: 48 hermetic tests, 57 with a database, and 11 Python tests.
+Verified locally: 73 hermetic tests, 88 with a database, and 11 Python tests.
 
 ## Entity resolution
 
@@ -54,6 +55,31 @@ returned as ambiguous rather than resolved to a guess. Every CIK in the seed
 comes from the SEC registry file; fields that could not be verified against a
 primary source are left null.
 
+## Ingestion
+
+SEC refuses anonymous traffic, so the connector needs a contact in the shape
+the SEC documents. A URL is not accepted in place of an address:
+
+```bash
+export SEC_USER_AGENT="Your Name your.address@example.com"
+```
+
+```bash
+pnpm ingest "MP" --forms 10-K,10-Q --limit 2 --since 2019-01-01
+```
+
+Filings are stored as immutable document versions addressed by the SHA-256 of
+the bytes as fetched. Re-running the same ingest writes nothing: identical
+bytes hit the content hash and identical numbers match the current fact
+revision. Different bytes add a version rather than replacing one, and a
+restated number supersedes its predecessor instead of overwriting it.
+
+XBRL company facts reach the record as promoted `VERIFIED` revisions without
+passing through a language model: an explicit `us-gaap` concept map, the
+latest-filed value per period, and the filing itself as the cited source. The
+epistemic ceiling is the same one claims obey — source tier caps status, so a
+tier-1 filing is what makes `VERIFIED` available here at all.
+
 ## Schema check
 
 ```bash
@@ -61,7 +87,7 @@ docker compose -f infra/docker/docker-compose.yml up -d
 ```
 
 ```bash
-sed -n '/-- migrate:up/,/-- migrate:down/p' packages/db/migrations/20260914000000_schema_v1_1.sql | sed '$d' | docker exec -i mineral-pg psql -U postgres -v ON_ERROR_STOP=1
+for f in packages/db/migrations/*.sql; do sed -n '/-- migrate:up/,/-- migrate:down/p' "$f" | sed '$d'; done | docker exec -i mineral-pg psql -U postgres -v ON_ERROR_STOP=1
 ```
 
 ```bash
@@ -80,4 +106,4 @@ Then run the migration and test with `psql -h localhost -p 55432 -U postgres -d 
 
 ## Implementation sequence
 
-See `docs/architecture/00-architecture-understanding.md` §J. Phases 0 and 1 (contracts half) are done. Next: phase 2, identity and entity resolution, seeded with MP Materials.
+See `docs/architecture/00-architecture-understanding.md` §J. Phases 0 to 3 are done. Next: phase 4, the Python analytics engine behind `POST /calc/{method}`.

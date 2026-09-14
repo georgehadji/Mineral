@@ -27,7 +27,9 @@ mineral/
 │   ├── events/      # event contracts, versioned envelope
 │   ├── schemas/     # Zod mirrors, parsed at trust boundaries
 │   ├── research/    # module registry, recipes, DAG derivation
-│   └── db/          # migrations and SQL invariant tests
+│   ├── identity/    # identifier normalisation, resolution planning
+│   ├── ingest/      # SEC EDGAR connector, XBRL concept map, hashing, chunking
+│   └── db/          # migrations, seeds, SQL invariant tests, repositories
 ├── services/
 │   └── analytics/   # Python, deterministic calculations
 ├── infra/docker/    # local PostgreSQL
@@ -38,20 +40,23 @@ mineral/
 └── .github/workflows/
 ```
 
-Planned, created when first used: `apps/web`, `packages/{ingestion, ai, monitoring, ontology, config, ui}`, `evals/`.
+Planned, created when first used: `apps/web`, `packages/{ai, monitoring, ontology, config, ui}`, `evals/`.
+The spec called the ingestion package `ingestion`; it landed as `ingest` to match the verb used everywhere else (`pnpm ingest`).
 
 ## Dependency direction
 
 ```text
 apps/web
    ↓
-research · ingestion · ai · monitoring
+research · ingest · ai · monitoring
    ↓
 domain · schemas · events · db
 ```
 
 `domain` imports nothing. `schemas` imports `domain` and `events`. `research`
-imports `domain`. Enforcement today is the absence of the reverse edges plus
+and `identity` import `domain`. `ingest` imports nothing and speaks HTTP to
+one provider; the `db` repositories are the only place where ingestion results
+meet SQL. Enforcement today is the absence of the reverse edges plus
 `pnpm typecheck`; add eslint import boundaries when `apps/web` lands, because
 that is the first point where the rule can actually be broken by accident.
 

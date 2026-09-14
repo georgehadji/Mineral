@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   EventEnvelopeSchema,
+  factEpistemicStatus,
   ProposedClaimSchema,
   ResearchModuleOutputSchema,
   strongestSupportedStatus,
@@ -102,5 +103,26 @@ describe('event envelope', () => {
 
   it('requires an idempotency key', () => {
     expect(EventEnvelopeSchema.safeParse({ ...base, idempotencyKey: '' }).success).toBe(false);
+  });
+});
+
+describe('factEpistemicStatus', () => {
+  const xbrl = { extractionMethod: 'xbrl', sourceTier: 1, status: 'promoted' } as const;
+
+  it('calls a promoted tier-1 XBRL value VERIFIED', () => {
+    expect(factEpistemicStatus(xbrl)).toBe('VERIFIED');
+  });
+
+  it('never lets an unpromoted value into the record', () => {
+    expect(factEpistemicStatus({ ...xbrl, status: 'candidate' })).toBe('HYPOTHESIS');
+    expect(factEpistemicStatus({ ...xbrl, status: 'superseded' })).toBe('STALE');
+    expect(factEpistemicStatus({ ...xbrl, status: 'rejected' })).toBe('UNKNOWN');
+  });
+
+  it('caps by source tier and refuses VERIFIED to an unquoted LLM reading', () => {
+    expect(factEpistemicStatus({ ...xbrl, sourceTier: 4 })).toBe('INFERRED');
+    expect(factEpistemicStatus({ ...xbrl, extractionMethod: 'llm' })).toBe('INFERRED');
+    expect(factEpistemicStatus({ ...xbrl, extractionMethod: 'llm', quote: 'revenue was 203.9' })).toBe('VERIFIED');
+    expect(factEpistemicStatus({ ...xbrl, extractionMethod: 'calculated', sourceTier: 5 })).toBe('CALCULATED');
   });
 });

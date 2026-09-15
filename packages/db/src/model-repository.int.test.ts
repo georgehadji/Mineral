@@ -8,7 +8,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import type { Pricing, Transport } from '@mineral/ai';
+import type { Transport } from '@mineral/ai';
 import { createPool, type Pool } from './client.ts';
 import { callModel } from './model-repository.ts';
 
@@ -19,7 +19,6 @@ describe.skipIf(!url)('the model gateway', () => {
   const run = randomUUID().slice(0, 8);
   /** Pinned so cleanup is exact and no real model id is touched. */
   const model = `test-model-${run}`;
-  const pricing: Pricing = { [model]: { input_per_million: 3, output_per_million: 15 } };
   const schema = z.object({ revenue: z.number(), unit: z.string() });
 
   let calls = 0;
@@ -28,9 +27,23 @@ describe.skipIf(!url)('the model gateway', () => {
     return {
       status: 200,
       body: JSON.stringify({
-        stop_reason: 'tool_use',
-        content: [{ type: 'tool_use', name: 'record_result', input: { revenue: 253_400_000, unit: 'USD' } }],
-        usage: { input_tokens: 10, output_tokens: 5 },
+        choices: [
+          {
+            finish_reason: 'tool_calls',
+            message: {
+              tool_calls: [
+                {
+                  type: 'function',
+                  function: {
+                    name: 'record_result',
+                    arguments: JSON.stringify({ revenue: 253_400_000, unit: 'USD' }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+        usage: { prompt_tokens: 10, completion_tokens: 5, cost: 0.000105 },
       }),
     };
   };
@@ -43,7 +56,6 @@ describe.skipIf(!url)('the model gateway', () => {
       user: 'What was revenue in the last fiscal year?',
       schema,
       transport,
-      pricing,
       apiKey: 'test-key',
       ...overrides,
     });
@@ -65,8 +77,8 @@ describe.skipIf(!url)('the model gateway', () => {
     expect(calls).toBe(before + 1);
     expect(result.cached).toBe(false);
     expect(result.value).toEqual({ revenue: 253_400_000, unit: 'USD' });
-    // 10 input and 5 output tokens at 3 and 15 per million.
-    expect(result.costUsd).toBeCloseTo(0.000105, 12);
+    // What the provider said it charged, not a number computed here.
+    expect(result.costUsd).toBe(0.000105);
 
     const { rows } = await pool.query(
       `select status, provider, temperature::text, input_tokens, output_tokens,
@@ -76,7 +88,7 @@ describe.skipIf(!url)('the model gateway', () => {
     );
     expect(rows[0]).toMatchObject({
       status: 'completed',
-      provider: 'anthropic',
+      provider: 'openrouter',
       temperature: '0.000',
       input_tokens: 10,
       output_tokens: 5,
@@ -117,8 +129,8 @@ describe.skipIf(!url)('the model gateway', () => {
   });
 
   it('replays on a machine with no credentials at all', async () => {
-    const saved = process.env.ANTHROPIC_API_KEY;
-    delete process.env.ANTHROPIC_API_KEY;
+    const saved = process.env.OPENROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
     const refuse: Transport = async () => {
       throw new Error('the provider must not be reached on a replay');
     };
@@ -130,13 +142,12 @@ describe.skipIf(!url)('the model gateway', () => {
         user: 'What was revenue in the last fiscal year?',
         schema,
         transport: refuse,
-        pricing,
         cacheOnly: true,
       });
       expect(replay.cached).toBe(true);
       expect(replay.value).toEqual({ revenue: 253_400_000, unit: 'USD' });
     } finally {
-      if (saved !== undefined) process.env.ANTHROPIC_API_KEY = saved;
+      if (saved !== undefined) process.env.OPENROUTER_API_KEY = saved;
     }
   });
 
@@ -148,8 +159,27 @@ describe.skipIf(!url)('the model gateway', () => {
     expect(other.requestHash).not.toBe((await ask()).requestHash);
   });
 
-  it('records no cost for a model with no configured price', async () => {
-    const result = await ask({ user: `Unpriced question ${run}.`, pricing: {} });
+  it('records no cost when the provider reported none', async () => {
+    const silent: Transport = async () => ({
+      status: 200,
+      body: JSON.stringify({
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    name: 'record_result',
+                    arguments: JSON.stringify({ revenue: 1, unit: 'USD' }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    });
+    const result = await ask({ user: `Uncosted question ${run}.`, transport: silent });
     expect(result.costUsd).toBeNull();
     const { rows } = await pool.query<{ cost: string | null }>(
       `select cost_usd::text as cost from research.model_runs where id = $1`,

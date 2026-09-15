@@ -29,7 +29,7 @@ mineral/
 │   ├── research/    # module registry, recipes, DAG derivation
 │   ├── identity/    # identifier normalisation, resolution planning
 │   ├── ingest/      # SEC EDGAR connector, XBRL concept map, hashing, chunking
-│   ├── ai/          # model gateway: provider adapter, schema conversion, routing
+│   ├── ai/          # model gateway: OpenRouter adapter, schema conversion, routing
 │   └── db/          # migrations, seeds, SQL invariant tests, repositories
 ├── services/
 │   └── analytics/   # Python: ratios, DCF, multiples; FastAPI POST /calc/{method}

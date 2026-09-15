@@ -53,7 +53,7 @@ try {
 
   console.log(result.value.answer);
   for (const assumption of result.value.assumptions) console.log(`  assumed: ${assumption}`);
-  const cost = result.costUsd === null ? 'unpriced' : `$${result.costUsd.toFixed(6)}`;
+  const cost = result.costUsd === null ? 'no cost reported' : `$${result.costUsd.toFixed(6)}`;
   console.log(
     `\n  ${result.cached ? 'cached' : 'live'}  ${result.inputTokens} in / ${result.outputTokens} out  ${cost}` +
       `\n  request ${result.requestHash.slice(0, 12)}  model run ${result.modelRunId}`,

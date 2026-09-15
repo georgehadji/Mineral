@@ -1,14 +1,11 @@
 import type { Pool, PoolClient } from 'pg';
 import type { UUID } from '@mineral/domain';
 import {
-  costUsd,
   parseCall,
   prepareCall,
-  pricingFromEnv,
   sendCall,
   type ModelRequest,
   type PreparedCall,
-  type Pricing,
   type Transport,
 } from '@mineral/ai';
 import { inTransaction } from './client.ts';
@@ -30,8 +27,6 @@ export interface CallModelInput<T> extends ModelRequest<T> {
   researchRunId?: UUID | null;
   moduleRunId?: UUID | null;
   promptVersionId?: UUID | null;
-  /** Defaults to MODEL_PRICING; an unpriced model records no cost. */
-  pricing?: Pricing;
   transport?: Transport;
   apiKey?: string;
   /** Refuse a live call. A replay that misses is a failure, not a fresh call. */
@@ -47,7 +42,7 @@ export interface CallModelResult<T> {
   responseHash: string;
   inputTokens: number;
   outputTokens: number;
-  /** Null when the model has no configured price; zero for a cache hit. */
+  /** What the provider charged. Zero for a cache hit, null if unreported. */
   costUsd: number | null;
   latencyMs: number | null;
 }
@@ -60,7 +55,6 @@ export async function callModel<T>(pool: Pool, input: CallModelInput<T>): Promis
   // Outside the try: a schema that cannot be expressed is a programming error,
   // not a failed call, and logging it as one would be misleading.
   const call = prepareCall(input);
-  const pricing = input.pricing ?? pricingFromEnv();
 
   try {
     const cached = await readCache(pool, call.requestHash);
@@ -79,13 +73,14 @@ export async function callModel<T>(pool: Pool, input: CallModelInput<T>): Promis
     }
 
     const outcome = parseCall(call, responseBody);
-    const liveCost = costUsd(call.model, outcome, pricing);
-    // A cache hit cost nothing. Its tokens are still recorded, so the saving
-    // stays computable from the log rather than guessed.
-    const recordedCost = cached ? 0 : liveCost;
+    // The provider reports what it charged, so cost is recorded rather than
+    // estimated from a price table that would have to be kept current.
+    // A cache hit cost nothing; its tokens stay recorded, so the saving is
+    // computable from the log rather than guessed.
+    const recordedCost = cached ? 0 : outcome.costUsd;
 
     const modelRunId = await inTransaction(pool, async (client) => {
-      if (!cached) await writeCache(client, call, responseBody, outcome, liveCost);
+      if (!cached) await writeCache(client, call, responseBody, outcome, outcome.costUsd);
       return logModelRun(client, {
         input,
         call,

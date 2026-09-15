@@ -17,7 +17,7 @@ Evidence before prose. Deterministic calculations before LLM conclusions. Versio
 | `packages/research/` | Module registry, recipes, DAG derivation |
 | `packages/identity/` | Identifier normalisation and resolution planning |
 | `packages/ingest/` | SEC EDGAR connector, XBRL concept map, content hashing and chunking |
-| `packages/ai/` | Model gateway: one provider adapter, Zod to JSON Schema, routing, cost |
+| `packages/ai/` | Model gateway: OpenRouter adapter, Zod to JSON Schema, tier routing |
 | `packages/db/` | PostgreSQL schema, seeds, SQL invariant tests, SQL-first repositories |
 | `services/analytics/` | Python deterministic calculations behind `POST /calc/{method}` |
 | `infra/docker/` | Local PostgreSQL |
@@ -36,7 +36,7 @@ cd services/analytics && uv sync --extra dev && uv run pytest
 
 `pnpm check` runs the TypeScript typecheck and the Vitest suite. Database-backed
 tests are skipped unless `DATABASE_URL` is set, so the default run is hermetic.
-Verified locally: 109 hermetic tests, 137 with a database, and 63 Python tests.
+Verified locally: 108 hermetic tests, 136 with a database, and 63 Python tests.
 
 ## Entity resolution
 
@@ -119,13 +119,13 @@ runs with different assumptions both have to stay readable.
 
 ## Model gateway
 
-Every model call goes through one gateway, is logged to `research.model_runs`,
+Every model call goes through OpenRouter, is logged to `research.model_runs`,
 and has its response stored in `research.model_cache` under a hash of the
 request. Temperature is 0 and structured output comes from a forced tool call,
 not from parsing prose, so the same request has one answer.
 
 ```bash
-export ANTHROPIC_API_KEY="..."
+export OPENROUTER_API_KEY="..."
 ```
 
 ```bash
@@ -140,16 +140,17 @@ response schema, temperature and token limit, so anything that could change
 the answer misses the cache, and nothing else does.
 
 Routing sends mechanical work to the cheap tier and judgement to the strong
-one: extraction and classification to Haiku 4.5, synthesis and verification to
-Opus 5. Change `ROUTING` in `packages/ai/src/gateway.ts` to move a tier.
+one: extraction and classification to `anthropic/claude-haiku-4.5`, synthesis
+and verification to `anthropic/claude-opus-5`. Change `ROUTING` in
+`packages/ai/src/gateway.ts` to move a tier, and
+`provider.require_parameters` keeps a request away from any upstream endpoint
+that would drop the tool definition and answer in prose instead.
 
-Cost tracking needs prices, and prices change, so none are built in. Supply
-them and every call is costed; leave them out and `cost_usd` is null while
-token counts are still recorded, so costs can be worked out later:
-
-```bash
-export MODEL_PRICING='{"claude-haiku-4-5-20251001":{"input_per_million":0,"output_per_million":0}}'
-```
+Cost is not estimated. OpenRouter reports what each call was charged and that
+number is stored, so there is no price table to keep current; a call the
+provider does not cost records null rather than a guess. Set
+`OPENROUTER_SITE_URL` to attribute calls on the OpenRouter dashboard, or leave
+it unset and no referrer is sent.
 
 Nothing here writes canonical state. A model proposes; promotion happens
 elsewhere, under the rules in `docs/domain/`.

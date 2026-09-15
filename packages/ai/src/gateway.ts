@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto';
 import type { ZodType } from 'zod';
 import {
-  ANTHROPIC_ENDPOINT,
-  ANTHROPIC_PROVIDER,
+  OPENROUTER_ENDPOINT,
+  OPENROUTER_PROVIDER,
   buildRequestBody,
   parseResponseBody,
   requestHeaders,
-} from './anthropic.ts';
+} from './openrouter.ts';
 import { zodToJsonSchema } from './json-schema.ts';
 
 /**
@@ -18,9 +18,10 @@ import { zodToJsonSchema } from './json-schema.ts';
 
 export type ModelTier = 'cheap' | 'strong';
 
+/** OpenRouter slugs, checked against its published model list. */
 export const ROUTING: Record<ModelTier, string> = {
-  cheap: 'claude-haiku-4-5-20251001',
-  strong: 'claude-opus-5',
+  cheap: 'anthropic/claude-haiku-4.5',
+  strong: 'anthropic/claude-opus-5',
 };
 
 export type ModelTask = 'extraction' | 'classification' | 'synthesis' | 'verification';
@@ -87,12 +88,12 @@ export function prepareCall<T>(request: ModelRequest<T>): PreparedCall<T> {
     temperature: TEMPERATURE,
   });
   return {
-    provider: ANTHROPIC_PROVIDER,
+    provider: OPENROUTER_PROVIDER,
     model,
     toolName,
     temperature: TEMPERATURE,
     body,
-    requestHash: sha256(`${ANTHROPIC_PROVIDER}\n${body}`),
+    requestHash: sha256(`${OPENROUTER_PROVIDER}\n${body}`),
     schema: request.schema,
   };
 }
@@ -121,20 +122,20 @@ export async function sendCall(
   call: PreparedRequest,
   options: SendOptions = {},
 ): Promise<{ body: string; latencyMs: number }> {
-  const apiKey = options.apiKey ?? process.env.ANTHROPIC_API_KEY;
+  const apiKey = options.apiKey ?? process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set; a live call needs one, a cached call does not');
+    throw new Error('OPENROUTER_API_KEY is not set; a live call needs one, a cached call does not');
   }
   const transport = options.transport ?? fetchTransport;
   const started = Date.now();
-  const response = await transport(ANTHROPIC_ENDPOINT, {
+  const response = await transport(OPENROUTER_ENDPOINT, {
     method: 'POST',
     headers: requestHeaders(apiKey),
     body: call.body,
   });
   const latencyMs = Date.now() - started;
   if (response.status !== 200) {
-    throw new Error(`anthropic returned ${response.status}: ${response.body.slice(0, 300)}`);
+    throw new Error(`openrouter returned ${response.status}: ${response.body.slice(0, 300)}`);
   }
   return { body: response.body, latencyMs };
 }
@@ -144,7 +145,9 @@ export interface ModelOutcome<T> {
   responseHash: string;
   inputTokens: number;
   outputTokens: number;
-  stopReason: string | null;
+  /** What the provider says the call cost. Null when it did not say. */
+  costUsd: number | null;
+  finishReason: string | null;
 }
 
 /** Zod parse of every gateway response, cached or live, without exception. */
@@ -155,7 +158,8 @@ export function parseCall<T>(call: PreparedCall<T>, responseBody: string): Model
     responseHash: sha256(responseBody),
     inputTokens: result.inputTokens,
     outputTokens: result.outputTokens,
-    stopReason: result.stopReason,
+    costUsd: result.costUsd,
+    finishReason: result.finishReason,
   };
 }
 

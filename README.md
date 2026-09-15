@@ -24,7 +24,7 @@ Evidence before prose. Deterministic calculations before LLM conclusions. Versio
 
 ## Development
 
-Requires Node 20 or newer with pnpm 9, Python 3.12 with uv, and PostgreSQL 16 or Docker.
+Requires Node 22.18 or newer with pnpm 9, Python 3.12 with uv, and PostgreSQL 16 or Docker.
 
 ```bash
 pnpm install && pnpm check
@@ -37,6 +37,19 @@ cd services/analytics && uv sync --extra dev && uv run pytest
 `pnpm check` runs the TypeScript typecheck and the Vitest suite. Database-backed
 tests are skipped unless `DATABASE_URL` is set, so the default run is hermetic.
 Verified locally: 108 hermetic tests, 136 with a database, and 63 Python tests.
+
+Configuration lives in `.env`, which Git ignores. Copy the example and fill
+in what you have:
+
+```bash
+cp .env.example .env
+```
+
+The CLIs load it themselves (`node --env-file-if-exists=.env`) and dbmate
+reads it natively, so a credential never has to be typed at a prompt where
+the shell history would keep it. Vitest deliberately does not load it:
+database-backed tests stay opt-in per shell, so `pnpm check` is still
+hermetic on a machine that happens to have a `DATABASE_URL` in `.env`.
 
 ## Entity resolution
 
@@ -59,10 +72,10 @@ primary source are left null.
 ## Ingestion
 
 SEC refuses anonymous traffic, so the connector needs a contact in the shape
-the SEC documents. A URL is not accepted in place of an address:
+the SEC documents. A URL is not accepted in place of an address. In `.env`:
 
-```bash
-export SEC_USER_AGENT="Your Name your.address@example.com"
+```
+SEC_USER_AGENT=Your Name your.address@example.com
 ```
 
 ```bash
@@ -122,10 +135,11 @@ runs with different assumptions both have to stay readable.
 Every model call goes through OpenRouter, is logged to `research.model_runs`,
 and has its response stored in `research.model_cache` under a hash of the
 request. Temperature is 0 and structured output comes from a forced tool call,
-not from parsing prose, so the same request has one answer.
+not from parsing prose, so the same request has one answer. The key goes in
+`.env`, and nothing else in the repo needs it:
 
-```bash
-export OPENROUTER_API_KEY="..."
+```
+OPENROUTER_API_KEY=sk-or-v1-...
 ```
 
 ```bash

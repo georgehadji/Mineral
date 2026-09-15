@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CalcResponseSchema,
   EventEnvelopeSchema,
   factEpistemicStatus,
   ProposedClaimSchema,
@@ -124,5 +125,51 @@ describe('factEpistemicStatus', () => {
     expect(factEpistemicStatus({ ...xbrl, extractionMethod: 'llm' })).toBe('INFERRED');
     expect(factEpistemicStatus({ ...xbrl, extractionMethod: 'llm', quote: 'revenue was 203.9' })).toBe('VERIFIED');
     expect(factEpistemicStatus({ ...xbrl, extractionMethod: 'calculated', sourceTier: 5 })).toBe('CALCULATED');
+  });
+
+  it('calls a calculated value CALCULATED without inventing a source tier', () => {
+    expect(factEpistemicStatus({ extractionMethod: 'calculated', status: 'promoted' })).toBe('CALCULATED');
+  });
+
+  it('refuses to grade a value read off a source with no tier', () => {
+    expect(() => factEpistemicStatus({ extractionMethod: 'xbrl', status: 'promoted' })).toThrow(/source/);
+  });
+});
+
+describe('CalcResponseSchema', () => {
+  const response = {
+    method: 'ratios',
+    engine: 'ratios',
+    engine_version: '0.2.0',
+    currency: 'USD',
+    inputs: { revenue: 253.4, cost_of_revenue: 152.0 },
+    outputs: [
+      {
+        code: 'gross_margin',
+        name: 'Gross margin',
+        value: 0.400157,
+        unit: 'ratio',
+        inputs: ['revenue', 'cost_of_revenue'],
+      },
+    ],
+    detail: {},
+  };
+
+  it('accepts a response that names what each number came from', () => {
+    expect(CalcResponseSchema.safeParse(response).success).toBe(true);
+  });
+
+  it('rejects a calculated number with no inputs behind it', () => {
+    const outputs = [{ ...response.outputs[0], inputs: [] }];
+    expect(CalcResponseSchema.safeParse({ ...response, outputs }).success).toBe(false);
+  });
+
+  it('rejects a value that is not a finite number', () => {
+    const outputs = [{ ...response.outputs[0], value: Number.POSITIVE_INFINITY }];
+    expect(CalcResponseSchema.safeParse({ ...response, outputs }).success).toBe(false);
+  });
+
+  it('rejects a method the calculation_runs table would not accept', () => {
+    expect(CalcResponseSchema.safeParse({ ...response, method: 'black_scholes' }).success).toBe(false);
   });
 });

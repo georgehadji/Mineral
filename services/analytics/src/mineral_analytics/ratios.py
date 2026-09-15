@@ -20,6 +20,24 @@ def gross_margin(revenue: float, cost_of_revenue: float) -> float:
     return (revenue - cost_of_revenue) / revenue
 
 
+def operating_margin(revenue: float, operating_income: float) -> float:
+    """Operating income as a fraction of revenue."""
+    _require_defined("revenue", revenue)
+    return operating_income / revenue
+
+
+def net_margin(revenue: float, net_income: float) -> float:
+    """Net income as a fraction of revenue."""
+    _require_defined("revenue", revenue)
+    return net_income / revenue
+
+
+def return_on_equity(net_income: float, stockholders_equity: float) -> float:
+    """Net income against the equity that stood at the period end."""
+    _require_defined("stockholders equity", stockholders_equity)
+    return net_income / stockholders_equity
+
+
 def net_debt(total_debt: float, cash_and_equivalents: float) -> float:
     """Debt net of cash. Negative means net cash."""
     return total_debt - cash_and_equivalents

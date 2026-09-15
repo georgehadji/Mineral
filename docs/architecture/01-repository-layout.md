@@ -31,7 +31,7 @@ mineral/
 │   ├── ingest/      # SEC EDGAR connector, XBRL concept map, hashing, chunking
 │   └── db/          # migrations, seeds, SQL invariant tests, repositories
 ├── services/
-│   └── analytics/   # Python, deterministic calculations
+│   └── analytics/   # Python: ratios, DCF, multiples; FastAPI POST /calc/{method}
 ├── infra/docker/    # local PostgreSQL
 ├── docs/
 │   ├── spec/        # frozen inputs
@@ -56,7 +56,9 @@ domain · schemas · events · db
 `domain` imports nothing. `schemas` imports `domain` and `events`. `research`
 and `identity` import `domain`. `ingest` imports nothing and speaks HTTP to
 one provider; the `db` repositories are the only place where ingestion results
-meet SQL. Enforcement today is the absence of the reverse edges plus
+meet SQL. `services/analytics` is reached over HTTP and depends on nothing in
+the workspace, which is what keeps every formula runnable from a test, a
+script or the service and gives the same answer each time. Enforcement today is the absence of the reverse edges plus
 `pnpm typecheck`; add eslint import boundaries when `apps/web` lands, because
 that is the first point where the rule can actually be broken by accident.
 

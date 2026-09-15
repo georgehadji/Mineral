@@ -11,11 +11,14 @@ from mineral_analytics.ratios import (
     gross_margin,
     net_debt,
     net_debt_to_ebitda,
+    net_margin,
+    operating_margin,
+    return_on_equity,
 )
 
 
 def test_engine_version_is_recorded():
-    assert ENGINE_VERSION == "0.1.0"
+    assert ENGINE_VERSION == "0.2.0"
 
 
 def test_gross_margin():
@@ -63,3 +66,17 @@ def test_fcf_yield():
 def test_functions_are_pure():
     args = dict(total_debt=680.0, cash_and_equivalents=180.0, ebitda=250.0)
     assert net_debt_to_ebitda(**args) == net_debt_to_ebitda(**args)
+
+
+def test_operating_and_net_margins_share_the_revenue_denominator():
+    assert operating_margin(revenue=253.4, operating_income=40.0) == pytest.approx(0.157853, abs=1e-6)
+    assert net_margin(revenue=253.4, net_income=25.0) == pytest.approx(0.098658, abs=1e-6)
+
+
+def test_return_on_equity():
+    assert return_on_equity(net_income=25.0, stockholders_equity=500.0) == pytest.approx(0.05)
+
+
+def test_return_on_equity_rejects_zero_equity():
+    with pytest.raises(CalculationError):
+        return_on_equity(net_income=25.0, stockholders_equity=0.0)

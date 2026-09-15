@@ -13,3 +13,16 @@ export {
   type IngestXbrlFactsInput,
   type IngestXbrlFactsResult,
 } from './ingest-repository.ts';
+export {
+  recordCalculation,
+  type RecordCalculationInput,
+  type RecordCalculationResult,
+} from './calc-repository.ts';
+export {
+  ensureFactDefinitions,
+  upsertFact,
+  currentFactVersion,
+  inTransaction,
+  type FactDefinitionInput,
+  type FactPeriod,
+} from './facts.ts';

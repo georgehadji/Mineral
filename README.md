@@ -18,7 +18,7 @@ Evidence before prose. Deterministic calculations before LLM conclusions. Versio
 | `packages/identity/` | Identifier normalisation and resolution planning |
 | `packages/ingest/` | SEC EDGAR connector, XBRL concept map, content hashing and chunking |
 | `packages/db/` | PostgreSQL schema, seeds, SQL invariant tests, SQL-first repositories |
-| `services/analytics/` | Python deterministic calculations |
+| `services/analytics/` | Python deterministic calculations behind `POST /calc/{method}` |
 | `infra/docker/` | Local PostgreSQL |
 
 ## Development
@@ -35,7 +35,7 @@ cd services/analytics && uv sync --extra dev && uv run pytest
 
 `pnpm check` runs the TypeScript typecheck and the Vitest suite. Database-backed
 tests are skipped unless `DATABASE_URL` is set, so the default run is hermetic.
-Verified locally: 73 hermetic tests, 88 with a database, and 11 Python tests.
+Verified locally: 79 hermetic tests, 100 with a database, and 63 Python tests.
 
 ## Entity resolution
 
@@ -80,6 +80,42 @@ latest-filed value per period, and the filing itself as the cited source. The
 epistemic ceiling is the same one claims obey — source tier caps status, so a
 tier-1 filing is what makes `VERIFIED` available here at all.
 
+## Analytics
+
+Every formula is a pure function with no network, no database and no model in
+the path, so the same inputs give the same number from a test, a script or the
+service. `ENGINE_VERSION` is stored with each result; it is bumped whenever a
+formula changes, which is what makes a stored number recomputable.
+
+```bash
+pnpm analytics
+```
+
+```bash
+curl -s localhost:8000/calc/dcf -H 'content-type: application/json' -d '{"inputs":{"base_cash_flow":100,"growth_rates":[0.10,0.10],"discount_rate":0.10,"terminal_growth":0.02,"net_debt":275,"shares_outstanding":100}}'
+```
+
+Methods: `ratios`, `dcf`, `reverse_dcf`, `pe`, `ev_ebitda`, `ev_sales`,
+`fcf_yield`. `GET /methods` reports what each one accepts. An input the method
+does not take is refused rather than ignored, and a multiple on a negative
+denominator is refused rather than returned, because it would rank the deepest
+loss maker as the cheapest stock.
+
+## Calculated facts
+
+```bash
+pnpm calc "MP" ratios --period-end 2024-12-31 --period-start 2024-01-01
+```
+
+Reads the promoted facts for that period, calculates, and stores each result as
+a promoted `CALCULATED` fact linked through `evidence.fact_derivations` to the
+revisions it came from, so a ratio can be traced to the filing underneath it.
+Facts from different periods are never mixed: durations and instants each have
+to agree, and a code that matches twice is reported as ambiguous instead of
+guessed. Re-running writes no new revision; it does write a new
+`valuation.calculation_runs` row, because a calculation is an event and two
+runs with different assumptions both have to stay readable.
+
 ## Schema check
 
 ```bash
@@ -106,4 +142,4 @@ Then run the migration and test with `psql -h localhost -p 55432 -U postgres -d 
 
 ## Implementation sequence
 
-See `docs/architecture/00-architecture-understanding.md` §J. Phases 0 to 3 are done. Next: phase 4, the Python analytics engine behind `POST /calc/{method}`.
+See `docs/architecture/00-architecture-understanding.md` §J. Phases 0 to 4 are done. Next: phase 5, the LLM gateway with response caching and `model_runs` logging.

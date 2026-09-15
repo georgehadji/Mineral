@@ -3,10 +3,10 @@ name = "mineral-analytics"
 version = "0.1.0"
 description = "Deterministic financial calculations. No LLM, no network, no I/O."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["fastapi>=0.115"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.3"]
+dev = ["pytest>=8.3", "httpx>=0.27", "uvicorn>=0.30"]
 
 [build-system]
 requires = ["hatchling"]

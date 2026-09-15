@@ -2,6 +2,12 @@ import type { Pool, PoolClient } from 'pg';
 import { chunkText, sha256, EDGAR_SOURCE, FACT_DEFINITIONS, type XbrlFactCandidate } from '@mineral/ingest';
 import { factEpistemicStatus, type EpistemicStatus } from '@mineral/schemas';
 import type { UUID } from '@mineral/domain';
+import {
+  currentFactVersion,
+  ensureFactDefinitions,
+  inTransaction,
+  upsertFact,
+} from './facts.ts';
 
 /**
  * Ingestion writes. Documents and their versions are immutable: a second
@@ -38,21 +44,6 @@ export interface IngestDocumentResult {
   /** False when these exact bytes were already stored. */
   created: boolean;
   chunkCount: number;
-}
-
-async function inTransaction<T>(pool: Pool, fn: (client: PoolClient) => Promise<T>): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query('begin');
-    const result = await fn(client);
-    await client.query('commit');
-    return result;
-  } catch (error) {
-    await client.query('rollback');
-    throw error;
-  } finally {
-    client.release();
-  }
 }
 
 /** Registers EDGAR once; the unique source name makes repeat calls no-ops. */
@@ -223,7 +214,7 @@ export async function ingestXbrlFacts(
 ): Promise<IngestXbrlFactsResult> {
   return inTransaction(pool, async (client) => {
     const sourceId = await ensureEdgarSource(client);
-    const definitionIds = await ensureFactDefinitions(client);
+    const definitionIds = await ensureFactDefinitions(client, FACT_DEFINITIONS);
     const filingVersions = await filingVersionsByAccession(
       client,
       sourceId,
@@ -239,7 +230,7 @@ export async function ingestXbrlFacts(
       if (!definitionId) throw new Error(`no fact definition for code ${candidate.code}`);
 
       const factId = await upsertFact(client, input.companyEntityId, definitionId, candidate);
-      const current = await currentVersion(client, factId, candidate.value);
+      const current = await currentFactVersion(client, factId, candidate.value);
       if (current?.same) {
         unchanged += 1;
         continue;
@@ -280,21 +271,6 @@ export async function ingestXbrlFacts(
   });
 }
 
-async function ensureFactDefinitions(client: PoolClient): Promise<Map<string, UUID>> {
-  for (const definition of FACT_DEFINITIONS) {
-    await client.query(
-      `insert into evidence.fact_definitions (code, name, value_type, canonical_unit, description)
-       values ($1, $2, $3, $4, $5) on conflict (code) do nothing`,
-      [definition.code, definition.name, definition.valueType, definition.canonicalUnit, definition.description],
-    );
-  }
-  const { rows } = await client.query<{ id: string; code: string }>(
-    `select id, code from evidence.fact_definitions where code = any($1::text[])`,
-    [FACT_DEFINITIONS.map((d) => d.code)],
-  );
-  return new Map(rows.map((r) => [r.code, r.id]));
-}
-
 /** Newest stored version of each filing, so a fact cites the filing itself. */
 async function filingVersionsByAccession(
   client: PoolClient,
@@ -311,58 +287,4 @@ async function filingVersionsByAccession(
     [sourceId, [...new Set(accessions)]],
   );
   return new Map(rows.map((r) => [r.external_id, r.id]));
-}
-
-async function upsertFact(
-  client: PoolClient,
-  entityId: UUID,
-  definitionId: UUID,
-  candidate: XbrlFactCandidate,
-): Promise<UUID> {
-  const params = [
-    entityId,
-    definitionId,
-    candidate.periodStart ?? null,
-    candidate.periodEnd ?? null,
-    candidate.asOfDate ?? null,
-  ];
-  const found = await client.query<{ id: string }>(
-    `select id from evidence.facts
-      where entity_id = $1 and fact_definition_id = $2
-        and period_start is not distinct from $3::date
-        and period_end is not distinct from $4::date
-        and as_of_date is not distinct from $5::date
-        and qualifiers = '{}'::jsonb`,
-    params,
-  );
-  const existing = found.rows[0]?.id;
-  if (existing) return existing;
-
-  const { rows } = await client.query<{ id: string }>(
-    `insert into evidence.facts
-       (entity_type, entity_id, fact_definition_id, period_start, period_end, as_of_date, qualifiers)
-     values ('company', $1, $2, $3::date, $4::date, $5::date, '{}'::jsonb)
-     returning id`,
-    params,
-  );
-  const id = rows[0]?.id;
-  if (!id) throw new Error('could not create the fact');
-  return id;
-}
-
-/** Current promoted revision, and whether it already carries this value. */
-async function currentVersion(
-  client: PoolClient,
-  factId: UUID,
-  value: number,
-): Promise<{ id: UUID; same: boolean } | null> {
-  const { rows } = await client.query<{ id: string; same: boolean }>(
-    `select fv.id, (fv.numeric_value = $2::numeric) as same
-       from evidence.facts f
-       join evidence.fact_versions fv on fv.id = f.current_version_id
-      where f.id = $1`,
-    [factId, String(value)],
-  );
-  const row = rows[0];
-  return row ? { id: row.id, same: row.same } : null;
 }

@@ -131,7 +131,9 @@ export type FactRevisionStatus = 'candidate' | 'promoted' | 'rejected' | 'supers
 
 export interface FactStatusInput {
   extractionMethod: FactExtractionMethod;
-  sourceTier: 1 | 2 | 3 | 4 | 5;
+  /** Tier of the source the value was read from. A calculated value has no
+   *  source of its own -- its inputs carry the tiers -- so it has none. */
+  sourceTier?: 1 | 2 | 3 | 4 | 5;
   status: FactRevisionStatus;
   /** Verbatim span the value was read from, where the method needs one. */
   quote?: string | null;
@@ -156,6 +158,9 @@ export function factEpistemicStatus(input: FactStatusInput): EpistemicStatus {
   }
   if (input.extractionMethod === 'calculated') return 'CALCULATED';
   if (input.extractionMethod === 'llm' && !input.quote) return 'INFERRED';
+  if (!input.sourceTier) {
+    throw new Error(`a ${input.extractionMethod} fact needs the tier of the source it was read from`);
+  }
   return MAX_STATUS_BY_TIER[input.sourceTier];
 }
 
@@ -237,3 +242,48 @@ export const EventEnvelopeSchema = z
       });
     }
   });
+
+/** Methods valuation.calculation_runs accepts; the engine implements a subset. */
+export const CALC_METHOD_VALUES = [
+  'ratios',
+  'dcf',
+  'reverse_dcf',
+  'pe',
+  'ev_ebitda',
+  'ev_sales',
+  'fcf_yield',
+  'nav',
+  'sotp',
+  'scenario',
+] as const;
+
+const CalcInputValueSchema = z.union([z.number().finite(), z.array(z.number().finite()).min(1)]);
+
+export const CalcOutputSchema = z.object({
+  code: z.string().min(1),
+  name: z.string().min(1),
+  value: z.number().finite(),
+  unit: z.string().min(1),
+  /** Input codes the number was computed from. A derivation names its inputs
+   *  or it is not a derivation, so an empty list is rejected here. */
+  inputs: z.array(z.string().min(1)).min(1),
+});
+
+/**
+ * Response of POST /calc/{method}. Parsed, not trusted: the analytics service
+ * is ours, but a value on its way to evidence.facts as CALCULATED has to
+ * arrive with a unit and named inputs, and nothing downstream re-checks that.
+ */
+export const CalcResponseSchema = z.object({
+  method: z.enum(CALC_METHOD_VALUES),
+  engine: z.string().min(1),
+  engine_version: z.string().min(1),
+  currency: z.string().length(3),
+  inputs: z.record(CalcInputValueSchema),
+  outputs: z.array(CalcOutputSchema).min(1),
+  detail: z.record(z.unknown()),
+});
+
+export type CalcMethod = (typeof CALC_METHOD_VALUES)[number];
+export type CalcOutput = z.infer<typeof CalcOutputSchema>;
+export type CalcResponse = z.infer<typeof CalcResponseSchema>;

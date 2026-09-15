@@ -36,7 +36,7 @@ cd services/analytics && uv sync --extra dev && uv run pytest
 
 `pnpm check` runs the TypeScript typecheck and the Vitest suite. Database-backed
 tests are skipped unless `DATABASE_URL` is set, so the default run is hermetic.
-Verified locally: 108 hermetic tests, 136 with a database, and 63 Python tests.
+Verified locally: 119 hermetic tests, 151 with a database, and 63 Python tests.
 
 Configuration lives in `.env`, which Git ignores. Copy the example and fill
 in what you have:
@@ -169,6 +169,32 @@ it unset and no referrer is sent.
 Nothing here writes canonical state. A model proposes; promotion happens
 elsewhere, under the rules in `docs/domain/`.
 
+## Research runs
+
+A run takes a recipe, freezes what the subject's evidence looks like right now,
+and walks the module DAG against that frozen set.
+
+```bash
+pnpm research "MP"
+```
+
+Modules are pure: each receives a context and returns claims, and none of them
+touches the database. Persistence, and the citation check, live in
+`packages/db/src/research-repository.ts`. Nothing a module returns is written
+until every quote has been found in the chunk it cites and every cited id has
+been found inside the snapshot -- a claim with a fabricated quote fails its
+module, and a failed required module fails the run.
+
+A module may assert DERIVED, INFERRED, HYPOTHESIS or UNKNOWN. VERIFIED and
+CALCULATED are not in its vocabulary: the validator assigns the first and the
+analytics engine the second. UNKNOWN with no evidence is a real answer and is
+accepted as one; anything else with no evidence is rejected.
+
+Runs are keyed by subject, recipe version, date and snapshot hash, so asking
+twice for the same thing returns the first run rather than writing a second. A
+run against a subject with no ingested evidence is refused outright, because an
+empty snapshot produces confident UNKNOWNs that read like findings.
+
 ## Schema check
 
 ```bash
@@ -195,4 +221,4 @@ Then run the migration and test with `psql -h localhost -p 55432 -U postgres -d 
 
 ## Implementation sequence
 
-See `docs/architecture/00-architecture-understanding.md` §J. Phases 0 to 5 are done. Next: phase 6, the module runtime with the first three research modules.
+See `docs/architecture/00-architecture-understanding.md` §J. Phases 0 to 6 are done. Next: phase 7, deterministic verification.

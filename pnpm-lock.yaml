@@ -38,6 +38,9 @@ importers:
       '@mineral/ingest':
         specifier: workspace:*
         version: link:../ingest
+      '@mineral/research':
+        specifier: workspace:*
+        version: link:../research
       '@mineral/schemas':
         specifier: workspace:*
         version: link:../schemas
@@ -70,6 +73,9 @@ importers:
 
   packages/research:
     dependencies:
+      '@mineral/ai':
+        specifier: workspace:*
+        version: link:../ai
       '@mineral/domain':
         specifier: workspace:*
         version: link:../domain

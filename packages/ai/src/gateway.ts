@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { ZodType } from 'zod';
+import type { ZodType, ZodTypeDef } from 'zod';
 import {
   OPENROUTER_ENDPOINT,
   OPENROUTER_PROVIDER,
@@ -53,7 +53,12 @@ export interface ModelRequest<T> {
   task: ModelTask;
   system: string;
   user: string;
-  schema: ZodType<T>;
+  /**
+   * Only the parsed type matters here. A schema with defaults has an input
+   * type that differs from its output; the gateway cares about what comes
+   * back, so the input side stays open.
+   */
+  schema: ZodType<T, ZodTypeDef, unknown>;
   toolName?: string;
   maxTokens?: number;
   /** Pins the model instead of routing, so a re-run can use the original. */
@@ -72,7 +77,7 @@ export interface PreparedRequest {
 }
 
 export interface PreparedCall<T> extends PreparedRequest {
-  schema: ZodType<T>;
+  schema: ZodType<T, ZodTypeDef, unknown>;
 }
 
 export function prepareCall<T>(request: ModelRequest<T>): PreparedCall<T> {

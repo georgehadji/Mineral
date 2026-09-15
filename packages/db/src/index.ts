@@ -30,3 +30,14 @@ export {
   type CallModelInput,
   type CallModelResult,
 } from './model-repository.ts';
+export {
+  ensureModuleDefinitions,
+  freezeSnapshot,
+  runResearch,
+  ResearchRunError,
+  type FrozenSnapshot,
+  type ModuleOutcome,
+  type RunResearchInput,
+  type RunResearchResult,
+  type Step,
+} from './research-repository.ts';

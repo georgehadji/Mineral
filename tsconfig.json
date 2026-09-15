@@ -31,6 +31,9 @@
       ],
       "@mineral/ingest": [
         "packages/ingest/src/index.ts"
+      ],
+      "@mineral/ai": [
+        "packages/ai/src/index.ts"
       ]
     },
     "allowImportingTsExtensions": true

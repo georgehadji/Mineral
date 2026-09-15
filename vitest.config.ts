@@ -13,6 +13,7 @@ export default defineConfig({
       '@mineral/research': pkg('research'),
       '@mineral/ingest': pkg('ingest'),
       '@mineral/identity': pkg('identity'),
+      '@mineral/ai': pkg('ai'),
     },
   },
   test: {

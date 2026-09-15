@@ -18,8 +18,17 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.20.2)
 
+  packages/ai:
+    dependencies:
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+
   packages/db:
     dependencies:
+      '@mineral/ai':
+        specifier: workspace:*
+        version: link:../ai
       '@mineral/domain':
         specifier: workspace:*
         version: link:../domain
@@ -39,6 +48,9 @@ importers:
       '@types/pg':
         specifier: ^8.11.10
         version: 8.23.1
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
 
   packages/domain: {}
 

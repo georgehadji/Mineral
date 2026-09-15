@@ -1,4 +1,4 @@
-import type { Pool, PoolClient } from 'pg';
+import type { PoolClient } from 'pg';
 import type { UUID } from '@mineral/domain';
 
 /**
@@ -22,21 +22,6 @@ export interface FactPeriod {
   periodStart?: string | null;
   periodEnd?: string | null;
   asOfDate?: string | null;
-}
-
-export async function inTransaction<T>(pool: Pool, fn: (client: PoolClient) => Promise<T>): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query('begin');
-    const result = await fn(client);
-    await client.query('commit');
-    return result;
-  } catch (error) {
-    await client.query('rollback');
-    throw error;
-  } finally {
-    client.release();
-  }
 }
 
 export async function ensureFactDefinitions(

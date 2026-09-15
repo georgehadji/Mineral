@@ -1,0 +1,108 @@
+import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
+import {
+  modelFor,
+  parseCall,
+  prepareCall,
+  sendCall,
+  ROUTING,
+  TASK_TIERS,
+  type Transport,
+} from './gateway.ts';
+
+const schema = z.object({ revenue: z.number(), unit: z.string() });
+
+const request = {
+  task: 'extraction' as const,
+  system: 'You read filings.',
+  user: 'What was revenue?',
+  schema,
+};
+
+const reply = (value: unknown) =>
+  JSON.stringify({
+    stop_reason: 'tool_use',
+    content: [{ type: 'tool_use', name: 'record_result', input: value }],
+    usage: { input_tokens: 10, output_tokens: 5 },
+  });
+
+describe('routing', () => {
+  it('sends mechanical reading to the cheap tier and judgement to the strong one', () => {
+    expect(TASK_TIERS.extraction).toBe('cheap');
+    expect(TASK_TIERS.classification).toBe('cheap');
+    expect(TASK_TIERS.synthesis).toBe('strong');
+    expect(TASK_TIERS.verification).toBe('strong');
+    expect(modelFor('extraction')).toBe(ROUTING.cheap);
+    expect(modelFor('verification')).toBe(ROUTING.strong);
+  });
+
+  it('lets a re-run pin the model the original used', () => {
+    expect(prepareCall({ ...request, model: 'some-older-model' }).model).toBe('some-older-model');
+  });
+});
+
+describe('the request hash', () => {
+  it('is stable for the same call', () => {
+    expect(prepareCall(request).requestHash).toBe(prepareCall(request).requestHash);
+  });
+
+  it('changes when anything that can change the answer changes', () => {
+    const base = prepareCall(request).requestHash;
+    expect(prepareCall({ ...request, user: 'What was net income?' }).requestHash).not.toBe(base);
+    expect(prepareCall({ ...request, system: 'You read transcripts.' }).requestHash).not.toBe(base);
+    expect(prepareCall({ ...request, task: 'synthesis' }).requestHash).not.toBe(base);
+    expect(prepareCall({ ...request, maxTokens: 99 }).requestHash).not.toBe(base);
+    expect(prepareCall({ ...request, schema: z.object({ revenue: z.number() }) }).requestHash).not.toBe(base);
+  });
+
+  it('runs at temperature zero, so the same request has one answer', () => {
+    expect(prepareCall(request).temperature).toBe(0);
+  });
+});
+
+describe('parsing', () => {
+  it('returns the validated object and the hash of the exact bytes', () => {
+    const call = prepareCall(request);
+    const body = reply({ revenue: 253400000, unit: 'USD' });
+    const outcome = parseCall(call, body);
+    expect(outcome.value).toEqual({ revenue: 253400000, unit: 'USD' });
+    expect(outcome.responseHash).toHaveLength(64);
+    expect(parseCall(call, body).responseHash).toBe(outcome.responseHash);
+  });
+
+  it('refuses an answer that does not match the schema it asked for', () => {
+    expect(() => parseCall(prepareCall(request), reply({ revenue: 'a lot' }))).toThrow();
+  });
+});
+
+describe('sending', () => {
+  it('posts the prepared bytes through the transport', async () => {
+    const seen: { url: string; body: string }[] = [];
+    const transport: Transport = async (url, init) => {
+      seen.push({ url, body: init.body });
+      return { status: 200, body: reply({ revenue: 1, unit: 'USD' }) };
+    };
+    const call = prepareCall(request);
+    const sent = await sendCall(call, { transport, apiKey: 'test-key' });
+    expect(seen[0]?.body).toBe(call.body);
+    expect(sent.body).toContain('tool_use');
+  });
+
+  it('refuses a live call with no api key', async () => {
+    const transport: Transport = async () => {
+      throw new Error('the transport should never have been reached');
+    };
+    const saved = process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    try {
+      await expect(sendCall(prepareCall(request), { transport })).rejects.toThrow(/ANTHROPIC_API_KEY/);
+    } finally {
+      if (saved !== undefined) process.env.ANTHROPIC_API_KEY = saved;
+    }
+  });
+
+  it('reports a provider failure rather than parsing the error page', async () => {
+    const transport: Transport = async () => ({ status: 529, body: 'overloaded' });
+    await expect(sendCall(prepareCall(request), { transport, apiKey: 'k' })).rejects.toThrow(/529/);
+  });
+});

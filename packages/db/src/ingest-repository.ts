@@ -2,10 +2,10 @@ import type { Pool, PoolClient } from 'pg';
 import { chunkText, sha256, EDGAR_SOURCE, FACT_DEFINITIONS, type XbrlFactCandidate } from '@mineral/ingest';
 import { factEpistemicStatus, type EpistemicStatus } from '@mineral/schemas';
 import type { UUID } from '@mineral/domain';
+import { inTransaction } from './client.ts';
 import {
   currentFactVersion,
   ensureFactDefinitions,
-  inTransaction,
   upsertFact,
 } from './facts.ts';
 

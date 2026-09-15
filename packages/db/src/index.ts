@@ -1,4 +1,4 @@
-export { createPool, type Pool } from './client.ts';
+export { createPool, inTransaction, type Pool } from './client.ts';
 export {
   resolveCompany,
   type ResolvedCompany,
@@ -22,7 +22,11 @@ export {
   ensureFactDefinitions,
   upsertFact,
   currentFactVersion,
-  inTransaction,
   type FactDefinitionInput,
   type FactPeriod,
 } from './facts.ts';
+export {
+  callModel,
+  type CallModelInput,
+  type CallModelResult,
+} from './model-repository.ts';

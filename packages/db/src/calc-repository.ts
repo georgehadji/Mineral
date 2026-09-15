@@ -1,10 +1,10 @@
 import type { Pool, PoolClient } from 'pg';
 import type { UUID } from '@mineral/domain';
+import { inTransaction } from './client.ts';
 import { factEpistemicStatus, type CalcResponse, type EpistemicStatus } from '@mineral/schemas';
 import {
   currentFactVersion,
   ensureFactDefinitions,
-  inTransaction,
   upsertFact,
   type FactPeriod,
 } from './facts.ts';

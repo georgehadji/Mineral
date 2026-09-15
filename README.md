@@ -17,6 +17,7 @@ Evidence before prose. Deterministic calculations before LLM conclusions. Versio
 | `packages/research/` | Module registry, recipes, DAG derivation |
 | `packages/identity/` | Identifier normalisation and resolution planning |
 | `packages/ingest/` | SEC EDGAR connector, XBRL concept map, content hashing and chunking |
+| `packages/ai/` | Model gateway: one provider adapter, Zod to JSON Schema, routing, cost |
 | `packages/db/` | PostgreSQL schema, seeds, SQL invariant tests, SQL-first repositories |
 | `services/analytics/` | Python deterministic calculations behind `POST /calc/{method}` |
 | `infra/docker/` | Local PostgreSQL |
@@ -35,7 +36,7 @@ cd services/analytics && uv sync --extra dev && uv run pytest
 
 `pnpm check` runs the TypeScript typecheck and the Vitest suite. Database-backed
 tests are skipped unless `DATABASE_URL` is set, so the default run is hermetic.
-Verified locally: 79 hermetic tests, 100 with a database, and 63 Python tests.
+Verified locally: 109 hermetic tests, 137 with a database, and 63 Python tests.
 
 ## Entity resolution
 
@@ -116,6 +117,43 @@ guessed. Re-running writes no new revision; it does write a new
 `valuation.calculation_runs` row, because a calculation is an event and two
 runs with different assumptions both have to stay readable.
 
+## Model gateway
+
+Every model call goes through one gateway, is logged to `research.model_runs`,
+and has its response stored in `research.model_cache` under a hash of the
+request. Temperature is 0 and structured output comes from a forced tool call,
+not from parsing prose, so the same request has one answer.
+
+```bash
+export ANTHROPIC_API_KEY="..."
+```
+
+```bash
+pnpm ask "What does MP Materials mine?"
+```
+
+Run it twice. The first call reaches the provider; the second reports `cached`,
+costs nothing, and never opens a socket. A replay needs no API key at all,
+which is what makes a recorded run reproducible on a machine with no
+credentials. The request hash covers the model, system prompt, user prompt,
+response schema, temperature and token limit, so anything that could change
+the answer misses the cache, and nothing else does.
+
+Routing sends mechanical work to the cheap tier and judgement to the strong
+one: extraction and classification to Haiku 4.5, synthesis and verification to
+Opus 5. Change `ROUTING` in `packages/ai/src/gateway.ts` to move a tier.
+
+Cost tracking needs prices, and prices change, so none are built in. Supply
+them and every call is costed; leave them out and `cost_usd` is null while
+token counts are still recorded, so costs can be worked out later:
+
+```bash
+export MODEL_PRICING='{"claude-haiku-4-5-20251001":{"input_per_million":0,"output_per_million":0}}'
+```
+
+Nothing here writes canonical state. A model proposes; promotion happens
+elsewhere, under the rules in `docs/domain/`.
+
 ## Schema check
 
 ```bash
@@ -142,4 +180,4 @@ Then run the migration and test with `psql -h localhost -p 55432 -U postgres -d 
 
 ## Implementation sequence
 
-See `docs/architecture/00-architecture-understanding.md` §J. Phases 0 to 4 are done. Next: phase 5, the LLM gateway with response caching and `model_runs` logging.
+See `docs/architecture/00-architecture-understanding.md` §J. Phases 0 to 5 are done. Next: phase 6, the module runtime with the first three research modules.

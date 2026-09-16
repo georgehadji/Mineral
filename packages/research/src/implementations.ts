@@ -1,3 +1,4 @@
+import { ASSUMPTION_BANDS } from './decision.ts';
 import { RecipeSchema, type Recipe } from './recipe.ts';
 import {
   validateOutput,
@@ -94,7 +95,7 @@ const entityResolution: ModuleImpl = {
     if (!context.subject.companyId) {
       throw new Error('entity_resolution: the run has no resolved subject');
     }
-    return { claims: [] };
+    return { claims: [], assumptions: [] };
   },
 };
 
@@ -200,17 +201,88 @@ const financialQuality: ModuleImpl = {
   },
 };
 
+/**
+ * Required by valuation_assumptions in the registry, and genuinely upstream of
+ * it: a discount rate that ignores how the company is funded is a number picked
+ * out of the air.
+ */
+const capitalStructure: ModuleImpl = {
+  code: 'capital_structure',
+  prompt: {
+    version: '1.0.0',
+    system:
+      'You describe how a company is funded: debt, equity, maturities, covenants, dilution, and ' +
+      'what its cost of capital is driven by.\n\n' +
+      CITATION_RULES,
+  },
+  run(context, ask) {
+    return askFor(
+      'capital_structure',
+      ask,
+      'synthesis',
+      capitalStructure.prompt!.system,
+      `Subject: ${subjectLine(context)}\n\n` +
+        'How is this company funded? Cover debt outstanding and its terms, cash, equity issuance ' +
+        'or dilution, and anything that would move its cost of capital. Five claims at most.\n\n' +
+        `What earlier modules found:\n${renderUpstream(context)}\n\n` +
+        `Figures:\n${renderFacts(context)}\n\nEvidence:\n${renderChunks(context)}`,
+    );
+  },
+};
+
+/** The codes policy will accept, rendered from the bands themselves so the
+ *  prompt cannot drift away from what the gate enforces. */
+const ASSUMPTION_MENU = Object.entries(ASSUMPTION_BANDS)
+  .map(([code, band]) => `- ${code} (${band.unit}), between ${band.min} and ${band.max}`)
+  .join('\n');
+
+/**
+ * Report I.22: the model proposes the inputs, it does not value the company.
+ * Every number it returns here is a `proposed` assumption that deterministic
+ * policy accepts or refuses before any engine sees it.
+ */
+const valuationAssumptions: ModuleImpl = {
+  code: 'valuation_assumptions',
+  prompt: {
+    version: '1.0.0',
+    system:
+      'You propose the inputs a discounted cash flow model for this company should use. You do ' +
+      'not value the company and you do not compute anything: a deterministic engine does that ' +
+      'from the inputs you propose, after a policy check accepts them.\n\n' +
+      CITATION_RULES +
+      '\nEvery assumption names the claim_key of one of your own claims in this output, gives a ' +
+      'plausible range around the value, and says why. An assumption you cannot justify from the ' +
+      'evidence is one you should not propose.',
+  },
+  run(context, ask) {
+    return askFor(
+      'valuation_assumptions',
+      ask,
+      'synthesis',
+      valuationAssumptions.prompt!.system,
+      `Subject: ${subjectLine(context)}\n\n` +
+        'Propose these inputs, all of them, and one claim per input stating what in the evidence ' +
+        `drives it:\n${ASSUMPTION_MENU}\n\n` +
+        'Terminal growth must stay below the discount rate. Propose nothing outside this list.\n\n' +
+        `What earlier modules found:\n${renderUpstream(context)}\n\n` +
+        `Figures:\n${renderFacts(context)}\n\nEvidence:\n${renderChunks(context)}`,
+    );
+  },
+};
+
 export const MODULE_IMPLEMENTATIONS: readonly ModuleImpl[] = [
   entityResolution,
   companyProfile,
   businessModel,
   financialQuality,
   commodityExposure,
+  capitalStructure,
+  valuationAssumptions,
 ];
 
 /**
- * The phase J.6 recipe: the three named modules, plus the two the registry
- * requires to reach them. Preconditions stop a run on empty evidence (I.23).
+ * The phase J.6 recipe, extended in J.8 with the two modules that reach the
+ * decision layer. Preconditions stop a run on empty evidence (I.23).
  */
 export const CORE_RECIPE: Recipe = RecipeSchema.parse({
   id: 'company-core',

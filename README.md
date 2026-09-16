@@ -14,7 +14,7 @@ Evidence before prose. Deterministic calculations before LLM conclusions. Versio
 | `packages/domain/` | Canonical TypeScript types, no runtime dependencies |
 | `packages/events/` | Versioned event envelope and payload contracts |
 | `packages/schemas/` | Zod mirrors, parsed at every trust boundary |
-| `packages/research/` | Module registry, recipes, DAG derivation |
+| `packages/research/` | Module registry, recipes, DAG derivation, verification rules, assumption policy |
 | `packages/identity/` | Identifier normalisation and resolution planning |
 | `packages/ingest/` | SEC EDGAR connector, XBRL concept map, content hashing and chunking |
 | `packages/ai/` | Model gateway: OpenRouter adapter, Zod to JSON Schema, tier routing |
@@ -36,7 +36,7 @@ cd services/analytics && uv sync --extra dev && uv run pytest
 
 `pnpm check` runs the TypeScript typecheck and the Vitest suite. Database-backed
 tests are skipped unless `DATABASE_URL` is set, so the default run is hermetic.
-Verified locally: 137 hermetic tests, 174 with a database, and 63 Python tests.
+Verified locally: 156 hermetic tests, 197 with a database, and 63 Python tests.
 
 Configuration lives in `.env`, which Git ignores. Copy the example and fill
 in what you have:
@@ -220,6 +220,45 @@ This repeats work the module runtime already does at write time, on purpose. A
 check that only runs on the way in cannot catch a row that arrived another way,
 and cannot be re-run in a year against a claim whose source has since changed.
 
+## Decisions
+
+What a completed run is for. Four steps, in order, over stored rows:
+
+```bash
+pnpm decide "MP"
+```
+
+**Policy.** A module proposes assumptions at status `proposed`; a deterministic
+rule in `packages/research/src/decision.ts` approves or refuses each one. A
+value outside its band, outside the range the proposal itself stated, without a
+rationale, or resting on a claim verification has thrown out is refused. A
+terminal growth at or above the discount rate is refused as a set, because the
+Gordon terminal value would be infinite or negative. Approval is recorded as
+`approved_by = 'policy'`: the model that proposed the number never approves it.
+
+**Scenario.** The approved revisions, held together under one name. A database
+trigger refuses to put a version in a scenario unless it is already approved,
+and the table allows one version per assumption, so a scenario cannot quietly
+hold two answers to the same question.
+
+**Valuation.** One DCF through the Python engine, recorded as a
+`valuation.calculation_runs` row that names the research run, the scenario, the
+promoted fact revisions and the approved assumption revisions it consumed. The
+outputs come back as `CALCULATED` facts with derivation edges to their inputs.
+Without a full approved set there is no valuation, and the thesis says so.
+
+**Synthesis.** One model call turns findings, approved assumptions and the
+valuation into a thesis version with nodes and edges. Every node that asserts
+something names the claim, approved assumption or calculation it rests on, and
+every name is resolved against what the run actually produced before anything is
+written -- a node citing a finding nobody made fails the decision. A run that
+left no evidenced finding standing produces no thesis at all.
+
+Deciding the same run twice returns the thesis already written. Note that
+deciding promotes calculated facts, which belong in the next snapshot: asking
+for a research run "as of" the same date afterwards correctly yields a new run,
+because the evidence is no longer the same evidence.
+
 ## Schema check
 
 ```bash
@@ -246,4 +285,4 @@ Then run the migration and test with `psql -h localhost -p 55432 -U postgres -d 
 
 ## Implementation sequence
 
-See `docs/architecture/00-architecture-understanding.md` §J. Phases 0 to 7 are done. Next: phase 8, the decision layer.
+See `docs/architecture/00-architecture-understanding.md` §J. Phases 0 to 8 are done. Next: phase 9, the web read models.

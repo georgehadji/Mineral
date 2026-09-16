@@ -27,7 +27,7 @@ describe.skipIf(!url)('the module runtime', () => {
   const MARKER =
     'The Company produced 45,455 metric tons of rare earth oxide in concentrate during the year.';
   const CHUNK_TEXT =
-    'Mountain Pass is the only operating rare earth mine and processing facility in North America. ' +
+    'The Round Top project is the company only rare earth property in development. ' +
     MARKER +
     ' Substantially all of our revenue is derived from sales to customers in China.';
 
@@ -131,8 +131,12 @@ describe.skipIf(!url)('the module runtime', () => {
   beforeAll(async () => {
     pool = createPool(url);
 
-    const outcome = await resolveCompany(pool, 'MP');
-    if (outcome.status !== 'resolved') throw new Error('seed 001 is missing MP Materials');
+    // Not MP: the calculation suite fixtures MP and promotes CALCULATED facts
+    // for it, and vitest runs files in parallel. A promoted fact belongs in the
+    // snapshot, so a fact arriving mid-suite correctly produces a different run
+    // -- which is exactly what the idempotency test below must not see.
+    const outcome = await resolveCompany(pool, 'USA Rare Earth');
+    if (outcome.status !== 'resolved') throw new Error('seed 001 is missing USA Rare Earth');
     companyId = outcome.company.companyId;
 
     await purge();
@@ -185,16 +189,18 @@ describe.skipIf(!url)('the module runtime', () => {
 
     expect(result.status).toBe('completed');
     expect(result.reused).toBe(false);
-    // Four LLM modules ran; entity_resolution is deterministic and emits nothing.
+    // Six LLM modules ran; entity_resolution is deterministic and emits nothing.
     expect(result.modules.map((m) => m.code)).toEqual([
       'entity_resolution',
       'company_profile',
       'business_model',
       'financial_quality',
+      'capital_structure',
       'commodity_exposure',
+      'valuation_assumptions',
     ]);
     expect(result.modules.every((m) => m.status === 'completed')).toBe(true);
-    expect(result.claimCount).toBe(8);
+    expect(result.claimCount).toBe(12);
 
     const { rows } = await pool.query<{
       claim_key: string;
@@ -237,7 +243,7 @@ describe.skipIf(!url)('the module runtime', () => {
       apiKey: 'test-key',
     });
     expect(again.reused).toBe(true);
-    expect(again.claimCount).toBe(8);
+    expect(again.claimCount).toBe(12);
 
     const { rows } = await pool.query<{ count: string }>(
       `select count(*)::text as count from research.runs

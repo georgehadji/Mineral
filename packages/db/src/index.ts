@@ -42,6 +42,13 @@ export {
   type Step,
 } from './research-repository.ts';
 export {
+  decide,
+  DecisionError,
+  type CalcFn,
+  type DecideInput,
+  type DecideResult,
+} from './decision-repository.ts';
+export {
   latestRunFor,
   verifyRun,
   VerificationError,

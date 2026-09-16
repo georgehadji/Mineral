@@ -31,6 +31,15 @@ export interface RecordCalculationInput {
    * cannot be linked as derivation inputs, because they are not facts yet.
    */
   inputFactVersions?: Readonly<Record<string, UUID>>;
+  /**
+   * The approved assumption revisions that drove the run, by code. Kept apart
+   * from fact revisions because they are a different kind of input: a fact is
+   * something the world reported, an assumption is something someone decided,
+   * and a reader asking "why this number" has to be able to tell them apart.
+   * Codes need not be input codes of the method -- a projection is built from
+   * a growth rate and a year count that the method never sees by those names.
+   */
+  inputAssumptionVersions?: Readonly<Record<string, UUID>>;
   /** Slice of time the derived facts belong to. */
   period?: FactPeriod;
   researchRunId?: UUID | null;
@@ -173,6 +182,14 @@ async function linkRunInputs(
       `insert into valuation.calculation_run_inputs (calculation_run_id, fact_version_id, role)
        values ($1, $2, $3) on conflict do nothing`,
       [calculationRunId, factVersionId, code],
+    );
+  }
+  for (const [code, assumptionVersionId] of Object.entries(input.inputAssumptionVersions ?? {})) {
+    await client.query(
+      `insert into valuation.calculation_run_inputs
+         (calculation_run_id, assumption_version_id, role)
+       values ($1, $2, $3) on conflict do nothing`,
+      [calculationRunId, assumptionVersionId, code],
     );
   }
 }

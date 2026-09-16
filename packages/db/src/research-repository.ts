@@ -54,6 +54,7 @@ export interface ModuleOutcome {
   moduleRunId: UUID;
   status: 'completed' | 'failed';
   claimCount: number;
+  assumptionCount: number;
   error?: string;
 }
 
@@ -64,6 +65,7 @@ export interface RunResearchResult {
   status: 'completed' | 'failed';
   modules: ModuleOutcome[];
   claimCount: number;
+  assumptionCount: number;
   /** True when this exact run existed already and was returned untouched. */
   reused: boolean;
 }
@@ -365,6 +367,66 @@ async function persistClaims(
   return params.output.claims.length;
 }
 
+/**
+ * Proposed assumptions (report G, I.22). Status is `proposed` and nothing here
+ * approves anything: that is deterministic policy, and it runs later, over
+ * stored rows. The source claim is resolved against what this run actually
+ * wrote, so a proposal naming a finding nobody made fails the module instead of
+ * founding a valuation on it.
+ */
+async function persistAssumptions(
+  client: PoolClient,
+  params: {
+    runId: UUID;
+    companyId: UUID;
+    output: ModuleOutput;
+    proposedBy: 'llm' | 'system';
+    code: string;
+  },
+): Promise<number> {
+  for (const proposal of params.output.assumptions) {
+    const { rows: claims } = await client.query<{ id: string }>(
+      `select id from research.claims where run_id = $1 and claim_key = $2 order by id limit 1`,
+      [params.runId, proposal.source_claim_key],
+    );
+    const sourceClaimId = claims[0]?.id;
+    if (!sourceClaimId) {
+      throw new ModuleOutputError(
+        `${params.code}: assumption ${proposal.code} rests on claim ${proposal.source_claim_key}, which this run did not produce`,
+      );
+    }
+
+    const { rows: assumptions } = await client.query<{ id: string }>(
+      `insert into valuation.assumptions (subject_type, subject_id, code, name, unit)
+       values ('company', $1, $2, $3, $4)
+       on conflict (subject_id, code) do update
+         set name = excluded.name, unit = excluded.unit
+       returning id`,
+      [params.companyId, proposal.code, proposal.name, proposal.unit],
+    );
+    const assumptionId = assumptions[0]?.id;
+    if (!assumptionId) throw new ResearchRunError(`could not store assumption ${proposal.code}`);
+
+    // version_no is assigned by the trigger, which locks the parent first.
+    await client.query(
+      `insert into valuation.assumption_versions
+         (assumption_id, version_no, value_numeric, min_value, max_value,
+          source_claim_id, rationale, status, proposed_by)
+       values ($1, 0, $2, $3, $4, $5, $6, 'proposed', $7)`,
+      [
+        assumptionId,
+        proposal.value,
+        proposal.min_value,
+        proposal.max_value,
+        sourceClaimId,
+        proposal.rationale,
+        params.proposedBy,
+      ],
+    );
+  }
+  return params.output.assumptions.length;
+}
+
 // --- orchestration ----------------------------------------------------------
 
 function contextFor(
@@ -432,8 +494,11 @@ export async function runResearch(pool: Pool, input: RunResearchInput): Promise<
   );
   if (existing.rows[0]?.status === 'completed') {
     const runId = existing.rows[0].id;
-    const { rows } = await pool.query<{ count: string }>(
-      `select count(*)::text as count from research.claims where run_id = $1`,
+    const { rows } = await pool.query<{ claims: string; assumptions: string }>(
+      `select (select count(*) from research.claims where run_id = $1)::text as claims,
+              (select count(*) from valuation.assumption_versions av
+                 join research.claims c on c.id = av.source_claim_id
+                where c.run_id = $1)::text as assumptions`,
       [runId],
     );
     return {
@@ -442,7 +507,8 @@ export async function runResearch(pool: Pool, input: RunResearchInput): Promise<
       snapshotHash: snapshot.hash,
       status: 'completed',
       modules: [],
-      claimCount: Number(rows[0]?.count ?? 0),
+      claimCount: Number(rows[0]?.claims ?? 0),
+      assumptionCount: Number(rows[0]?.assumptions ?? 0),
       reused: true,
     };
   }
@@ -513,6 +579,7 @@ export async function runResearch(pool: Pool, input: RunResearchInput): Promise<
     status: 'completed',
     modules: outcomes,
     claimCount: outcomes.reduce((total, outcome) => total + outcome.claimCount, 0),
+    assumptionCount: outcomes.reduce((total, outcome) => total + outcome.assumptionCount, 0),
     reused: false,
   };
 }
@@ -586,6 +653,7 @@ async function runModule(
     const output = await impl.run(context, ask);
     checkCitations(code, output, params.chunkIndex, params.factIds);
 
+    const author = decl.kind === 'deterministic' ? 'system' : 'llm';
     await inTransaction(pool, async (client) => {
       await persistClaims(client, {
         runId,
@@ -593,7 +661,14 @@ async function runModule(
         companyId: params.subject.companyId,
         output,
         chunks: params.chunkIndex,
-        createdBy: decl.kind === 'deterministic' ? 'system' : 'llm',
+        createdBy: author,
+      });
+      await persistAssumptions(client, {
+        runId,
+        companyId: params.subject.companyId,
+        output,
+        proposedBy: author,
+        code,
       });
       await client.query(
         `update research.module_runs
@@ -604,7 +679,13 @@ async function runModule(
     });
 
     return {
-      outcome: { code, moduleRunId, status: 'completed', claimCount: output.claims.length },
+      outcome: {
+        code,
+        moduleRunId,
+        status: 'completed',
+        claimCount: output.claims.length,
+        assumptionCount: output.assumptions.length,
+      },
       output,
     };
   } catch (error) {

@@ -198,7 +198,7 @@ describe.skipIf(!url)('verification', () => {
   it('passes a run whose claims all quote their evidence', async () => {
     const result = await verifyRun(pool, runId);
     expect(result.overall).toBe('passed');
-    expect(result.claimsChecked).toBe(4);
+    expect(result.claimsChecked).toBe(6);
     expect(result.contradicted).toEqual([]);
 
     const { rows } = await pool.query<{ overall_status: string; summary: { failed: number } }>(

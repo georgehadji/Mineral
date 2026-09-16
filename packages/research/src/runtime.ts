@@ -92,12 +92,35 @@ export const ClaimSchema = z.object({
   evidence: z.array(EvidenceRefSchema),
 });
 
+/**
+ * An assumption a module proposes. Report G allows exactly this much: a value
+ * with a range, a rationale and the claim it rests on, at status `proposed`. It
+ * does not allow a module to approve one. Approval is deterministic policy and
+ * lives in decision.ts, outside every module.
+ */
+export const AssumptionProposalSchema = z.object({
+  code: z.string().min(1).describe('snake_case input code, one of the codes the question lists'),
+  name: z.string().min(1).describe('short human label'),
+  value: z.number().describe('the single number to use'),
+  unit: z.string().nullable().default(null),
+  min_value: z.number().nullable().default(null).describe('low end of the plausible range'),
+  max_value: z.number().nullable().default(null).describe('high end of the plausible range'),
+  rationale: z.string().min(1).describe('why this value, in terms of the evidence'),
+  source_claim_key: z
+    .string()
+    .min(1)
+    .describe('claim_key of a finding in this run that supports the value'),
+});
+
 export const ModuleOutputSchema = z.object({
   claims: z.array(ClaimSchema),
+  /** Empty for every module that is not proposing valuation inputs. */
+  assumptions: z.array(AssumptionProposalSchema).default([]),
 });
 
 export type EvidenceRef = z.infer<typeof EvidenceRefSchema>;
 export type Claim = z.infer<typeof ClaimSchema>;
+export type AssumptionProposal = z.infer<typeof AssumptionProposalSchema>;
 export type ModuleOutput = z.infer<typeof ModuleOutputSchema>;
 
 /** Minimum quote length. A three-word quote matches by accident. */
@@ -147,6 +170,14 @@ export function validateOutput(code: string, output: ModuleOutput): ModuleOutput
         }
       }
     }
+  }
+
+  // One value per input, or a later reader picks arbitrarily between two. That
+  // the source claim resolves is checked where the claims are, not here.
+  const codes = new Set<string>();
+  for (const assumption of output.assumptions) {
+    if (codes.has(assumption.code)) fail(`assumption ${assumption.code} is proposed twice`);
+    codes.add(assumption.code);
   }
   return output;
 }

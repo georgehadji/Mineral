@@ -19,6 +19,7 @@ Evidence before prose. Deterministic calculations before LLM conclusions. Versio
 | `packages/identity/` | Identifier normalisation and resolution planning |
 | `packages/ingest/` | SEC EDGAR connector, XBRL concept map, content hashing and chunking |
 | `packages/ai/` | Model gateway: OpenRouter adapter, Zod to JSON Schema, tier routing |
+| `packages/monitoring/` | Deterministic drift rules: new sources, invalidated assumptions, valuation moves |
 | `packages/db/` | PostgreSQL schema, seeds, SQL invariant tests, SQL-first repositories, read models |
 | `services/analytics/` | Python deterministic calculations behind `POST /calc/{method}` |
 | `infra/docker/` | Local PostgreSQL |
@@ -37,7 +38,7 @@ cd services/analytics && uv sync --extra dev && uv run pytest
 
 `pnpm check` runs the TypeScript typecheck and the Vitest suite. Database-backed
 tests are skipped unless `DATABASE_URL` is set, so the default run is hermetic.
-Verified locally: 159 hermetic tests, 206 with a database, and 63 Python tests.
+Verified locally: 172 hermetic tests, 227 with a database, and 63 Python tests.
 
 Configuration lives in `.env`, which Git ignores. Copy the example and fill
 in what you have:
@@ -297,6 +298,36 @@ passer-by must not be able to do is spend money on model calls. The trigger runs
 research, then verification, then the decision, and returns as soon as the run
 row exists so the status page has something to show.
 
+## Monitoring
+
+```bash
+pnpm monitor "MP"
+```
+
+A thesis is a statement made at one moment from one set of documents, and the
+world then carries on. Monitoring is the deterministic answer to whether that
+statement still rests on what it rested on. It reads the latest thesis version
+and reports three things: primary sources that arrived after the run behind it
+started reading, thesis nodes whose evidence has moved underneath them, and how
+far the valuation has travelled from the one the thesis was written against.
+
+Each finding is matched against the enabled rules on that company and recorded
+in `monitoring.alert_events` with a reference to the row that caused it -- the
+new document version, the promoted fact revision, the later calculation run --
+so an alert is a pointer into the record rather than a sentence about it.
+
+`packages/monitoring/src/drift.ts` holds the rules as pure functions; nothing in
+them writes, and nothing recomputes a number. The valuation rule compares two
+stored calculation runs rather than running the engine again, because a watch
+that recalculates its own evidence is a second opinion.
+
+Running it twice is free. Every alert carries a dedupe key that is a function of
+its cause and the schema holds that column unique, so the same drift reported
+again writes nothing.
+
+Rules belong to a user: `pnpm monitor` creates the three default rules for the
+only account if there is one, and wants `--user <email>` otherwise.
+
 ## Schema check
 
 ```bash
@@ -323,4 +354,4 @@ Then run the migration and test with `psql -h localhost -p 55432 -U postgres -d 
 
 ## Implementation sequence
 
-See `docs/architecture/00-architecture-understanding.md` §J. Phases 0 to 9 are done. Next: phase 10, monitoring.
+See `docs/architecture/00-architecture-understanding.md` §J. Phases 0 to 10 are done. Next: phase 11, breadth.

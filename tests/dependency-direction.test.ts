@@ -22,7 +22,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const RINGS: string[][] = [
   ['@mineral/domain'],
   ['@mineral/events', '@mineral/schemas'],
-  ['@mineral/db', '@mineral/identity', '@mineral/ingest', '@mineral/ai', '@mineral/research'],
+  ['@mineral/db', '@mineral/identity', '@mineral/ingest', '@mineral/ai', '@mineral/research', '@mineral/monitoring'],
   ['@mineral/web'],
 ];
 

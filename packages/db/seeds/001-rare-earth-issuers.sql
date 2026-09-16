@@ -120,6 +120,13 @@ select pg_temp.seed_issuer(
   'Critical Metals Corp.', 'Critical Metals', '0001951089', null,
   null, 'XNAS', 'CRML', 'USD');
 
+-- A seventh issuer, deliberately owned by no suite but the monitoring one:
+-- its integration test rewrites the whole record of one company, and the
+-- database suites run in parallel.
+select pg_temp.seed_issuer(
+  'Arafura Rare Earths Limited', 'Arafura', null, 'AU',
+  null, 'XASX', 'ARU', 'AUD');
+
 -- Non-US issuer: no SEC registration, so no CIK. Resolution has to reach it
 -- through ticker and alias alone.
 select pg_temp.seed_issuer(

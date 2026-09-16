@@ -32,6 +32,7 @@ mineral/
 │   ├── identity/    # identifier normalisation, resolution planning
 │   ├── ingest/      # SEC EDGAR connector, XBRL concept map, hashing, chunking
 │   ├── ai/          # model gateway: OpenRouter adapter, schema conversion, routing
+│   ├── monitoring/  # deterministic drift rules over a stored thesis
 │   └── db/          # migrations, seeds, SQL invariant tests, repositories
 ├── services/
 │   └── analytics/   # Python: ratios, DCF, multiples; FastAPI POST /calc/{method}
@@ -44,7 +45,9 @@ mineral/
 └── .github/workflows/
 ```
 
-Planned, created when first used: `packages/{monitoring, ontology, config, ui}`, `evals/`.
+Planned, created when first used: `packages/{ontology, config, ui}`, `evals/`.
+`packages/monitoring` arrived at J.10, under rule 2: the alert tables existed from
+schema v1.1, but nothing evaluated them until there was a thesis to drift from.
 The spec called the ingestion package `ingestion`; it landed as `ingest` to match the verb used everywhere else (`pnpm ingest`).
 
 Rule 2 said `apps/web` was premature because V1 would serve Inngest functions
@@ -71,7 +74,10 @@ the workspace, which is what keeps every formula runnable from a test, a
 script or the service and gives the same answer each time. `ai` imports only
 `zod` and writes no SQL at all: it prepares, sends and parses a model call, and
 the `db` repository decides whether to send one and records what happened.
-`apps/web` reads through `db` and `research` and is depended on by nothing.
+`monitoring` imports `domain` and nothing else: it holds the drift rules as pure
+functions, and the `db` repository loads the rows they read and writes the alerts
+they produce. `apps/web` reads through `db` and `research` and is depended on by
+nothing.
 
 Enforcement is `tests/dependency-direction.test.ts`, which places every
 workspace package in a ring and fails if one declares a dependency further out.

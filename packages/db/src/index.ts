@@ -49,6 +49,14 @@ export {
   type DecideResult,
 } from './decision-repository.ts';
 export {
+  alertRules,
+  driftReport,
+  ensureAlertRules,
+  monitor,
+  MonitoringError,
+  type MonitorResult,
+} from './monitoring-repository.ts';
+export {
   latestRunFor,
   verifyRun,
   VerificationError,

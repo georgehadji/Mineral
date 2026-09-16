@@ -69,6 +69,9 @@ importers:
       '@mineral/ingest':
         specifier: workspace:*
         version: link:../ingest
+      '@mineral/monitoring':
+        specifier: workspace:*
+        version: link:../monitoring
       '@mineral/research':
         specifier: workspace:*
         version: link:../research
@@ -101,6 +104,12 @@ importers:
         version: link:../domain
 
   packages/ingest: {}
+
+  packages/monitoring:
+    dependencies:
+      '@mineral/domain':
+        specifier: workspace:*
+        version: link:../domain
 
   packages/research:
     dependencies:

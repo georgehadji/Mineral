@@ -11,6 +11,7 @@ Evidence before prose. Deterministic calculations before LLM conclusions. Versio
 | `docs/spec/` | Frozen product and architecture spec (brief, rules, original schema draft, domain types, events, recipe) |
 | `docs/architecture/` | Architecture understanding report and layout decisions |
 | `docs/domain/` | Domain semantics (time axes, epistemic status, source tiers) |
+| `apps/web/` | Next.js app: company page, evidence drill-down, run trigger, Better Auth |
 | `packages/domain/` | Canonical TypeScript types, no runtime dependencies |
 | `packages/events/` | Versioned event envelope and payload contracts |
 | `packages/schemas/` | Zod mirrors, parsed at every trust boundary |
@@ -18,7 +19,7 @@ Evidence before prose. Deterministic calculations before LLM conclusions. Versio
 | `packages/identity/` | Identifier normalisation and resolution planning |
 | `packages/ingest/` | SEC EDGAR connector, XBRL concept map, content hashing and chunking |
 | `packages/ai/` | Model gateway: OpenRouter adapter, Zod to JSON Schema, tier routing |
-| `packages/db/` | PostgreSQL schema, seeds, SQL invariant tests, SQL-first repositories |
+| `packages/db/` | PostgreSQL schema, seeds, SQL invariant tests, SQL-first repositories, read models |
 | `services/analytics/` | Python deterministic calculations behind `POST /calc/{method}` |
 | `infra/docker/` | Local PostgreSQL |
 
@@ -36,7 +37,7 @@ cd services/analytics && uv sync --extra dev && uv run pytest
 
 `pnpm check` runs the TypeScript typecheck and the Vitest suite. Database-backed
 tests are skipped unless `DATABASE_URL` is set, so the default run is hermetic.
-Verified locally: 156 hermetic tests, 197 with a database, and 63 Python tests.
+Verified locally: 159 hermetic tests, 206 with a database, and 63 Python tests.
 
 Configuration lives in `.env`, which Git ignores. Copy the example and fill
 in what you have:
@@ -259,6 +260,43 @@ deciding promotes calculated facts, which belong in the next snapshot: asking
 for a research run "as of" the same date afterwards correctly yields a new run,
 because the evidence is no longer the same evidence.
 
+## Web
+
+```bash
+pnpm web
+```
+
+Then http://localhost:3000. It needs `DATABASE_URL` and a `BETTER_AUTH_SECRET`;
+model calls additionally need `OPENROUTER_API_KEY`, and a valuation needs
+`pnpm analytics` running.
+
+The pages are read models and nothing else (invariant C.9). Every figure is read
+back from the row that recorded it: `packages/db/src/read-repository.ts` holds
+the queries, it never writes, and it computes no number that is not already
+stored. A page can be stale. It cannot disagree with the record.
+
+**The company page** shows the latest thesis version -- verdict, confidence,
+summary -- then its nodes grouped by type, the valuation with the range it has
+taken across scenarios, the assumptions behind it with the ones policy refused
+still visible, the evidence counts, and what changed since the previous thesis
+version. The diff is derived on read from two immutable versions rather than
+stored, and nodes are matched across versions by `claim_key` or assumption code,
+so a claim restated by a later run is recognised as the same subject rather than
+reported as new.
+
+**The drill-down** is the point. Every node names what it rests on, and the name
+is a link: a claim goes to its statement, its citations, its verification checks
+and the other runs that answered the same `claim_key`; each citation goes to the
+stored filing with the cited chunk highlighted. A valuation input takes the
+other route -- a promoted fact revision names the document version it was read
+off, so a number reaches its filing without a claim in between.
+
+**Starting a run** needs an account; reading does not. Better Auth is configured
+for email and password only, in its own prefixed tables, because the one thing a
+passer-by must not be able to do is spend money on model calls. The trigger runs
+research, then verification, then the decision, and returns as soon as the run
+row exists so the status page has something to show.
+
 ## Schema check
 
 ```bash
@@ -285,4 +323,4 @@ Then run the migration and test with `psql -h localhost -p 55432 -U postgres -d 
 
 ## Implementation sequence
 
-See `docs/architecture/00-architecture-understanding.md` §J. Phases 0 to 8 are done. Next: phase 9, the web read models.
+See `docs/architecture/00-architecture-understanding.md` §J. Phases 0 to 9 are done. Next: phase 10, monitoring.

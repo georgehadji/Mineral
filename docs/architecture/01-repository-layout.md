@@ -22,6 +22,8 @@ where the two disagree; the spec copy stays frozen as the original input.
 
 ```text
 mineral/
+├── apps/
+│   └── web/         # Next.js App Router: company page, drill-down, run trigger, Better Auth
 ├── packages/
 │   ├── domain/      # types only, no runtime dependencies
 │   ├── events/      # event contracts, versioned envelope
@@ -38,11 +40,18 @@ mineral/
 │   ├── spec/        # frozen inputs
 │   ├── architecture/
 │   └── domain/      # time axes, epistemic status, source tiers
+├── tests/           # repo-level rules that belong to no single package
 └── .github/workflows/
 ```
 
-Planned, created when first used: `apps/web`, `packages/{monitoring, ontology, config, ui}`, `evals/`.
+Planned, created when first used: `packages/{monitoring, ontology, config, ui}`, `evals/`.
 The spec called the ingestion package `ingestion`; it landed as `ingest` to match the verb used everywhere else (`pnpm ingest`).
+
+Rule 2 said `apps/web` was premature because V1 would serve Inngest functions
+from a Next.js route and there was no second deployable to justify the tree.
+That reason is now void -- phase J.6 replaced Inngest with an injected `Step`
+seam -- but the directory arrived anyway at J.9, for the app itself rather than
+for the worker it was once going to host.
 
 ## Dependency direction
 
@@ -61,9 +70,16 @@ meet SQL. `services/analytics` is reached over HTTP and depends on nothing in
 the workspace, which is what keeps every formula runnable from a test, a
 script or the service and gives the same answer each time. `ai` imports only
 `zod` and writes no SQL at all: it prepares, sends and parses a model call, and
-the `db` repository decides whether to send one and records what happened. Enforcement today is the absence of the reverse edges plus
-`pnpm typecheck`; add eslint import boundaries when `apps/web` lands, because
-that is the first point where the rule can actually be broken by accident.
+the `db` repository decides whether to send one and records what happened.
+`apps/web` reads through `db` and `research` and is depended on by nothing.
+
+Enforcement is `tests/dependency-direction.test.ts`, which places every
+workspace package in a ring and fails if one declares a dependency further out.
+This replaces the eslint import boundary this document promised for the arrival
+of `apps/web`: pnpm links strictly, so a package can only import what its own
+`package.json` declares, which makes the declared graph the import graph. A lint
+rule would re-derive the same fact with a toolchain the repository does not
+otherwise need.
 
 ## Package entry points
 

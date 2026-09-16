@@ -47,6 +47,12 @@ export interface RunResearchInput {
   apiKey?: string;
   cacheOnly?: boolean;
   step?: Step;
+  /** Who asked. Research state is global; the run still records the requester. */
+  userId?: UUID;
+  /** Called with the run id as soon as the row exists, before the modules run,
+   *  so a caller that does not wait for the whole DAG still has something to
+   *  show a status page. */
+  onStart?: (runId: UUID) => void;
 }
 
 export interface ModuleOutcome {
@@ -494,6 +500,7 @@ export async function runResearch(pool: Pool, input: RunResearchInput): Promise<
   );
   if (existing.rows[0]?.status === 'completed') {
     const runId = existing.rows[0].id;
+    input.onStart?.(runId);
     const { rows } = await pool.query<{ claims: string; assumptions: string }>(
       `select (select count(*) from research.claims where run_id = $1)::text as claims,
               (select count(*) from valuation.assumption_versions av
@@ -519,13 +526,22 @@ export async function runResearch(pool: Pool, input: RunResearchInput): Promise<
       await pool.query<{ id: string }>(
         `insert into research.runs
            (subject_type, subject_id, recipe_id, as_of_date, depth_mode, status,
-            snapshot_id, idempotency_key, started_at)
-         values ('company', $1, $2, $3, $4, 'running', $5, $6, now())
+            snapshot_id, idempotency_key, started_at, user_id)
+         values ('company', $1, $2, $3, $4, 'running', $5, $6, now(), $7)
          returning id`,
-        [subject.companyId, recipeId, asOfDate, input.recipe.depth, snapshot.id, idempotencyKey],
+        [
+          subject.companyId,
+          recipeId,
+          asOfDate,
+          input.recipe.depth,
+          snapshot.id,
+          idempotencyKey,
+          input.userId ?? null,
+        ],
       )
     ).rows[0]?.id;
   if (!runId) throw new ResearchRunError('could not create the run');
+  input.onStart?.(runId);
 
   const chunkIndex = new Map(snapshot.chunks.map((c) => [c.chunkId, c]));
   const factIds = new Set(snapshot.facts.map((f) => f.factVersionId));

@@ -1,0 +1,71 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "incremental": true,
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "allowImportingTsExtensions": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./*"
+      ],
+      "@mineral/domain": [
+        "../../packages/domain/src/index.ts"
+      ],
+      "@mineral/events": [
+        "../../packages/events/src/index.ts"
+      ],
+      "@mineral/schemas": [
+        "../../packages/schemas/src/index.ts"
+      ],
+      "@mineral/research": [
+        "../../packages/research/src/index.ts"
+      ],
+      "@mineral/ingest": [
+        "../../packages/ingest/src/index.ts"
+      ],
+      "@mineral/identity": [
+        "../../packages/identity/src/index.ts"
+      ],
+      "@mineral/ai": [
+        "../../packages/ai/src/index.ts"
+      ],
+      "@mineral/db": [
+        "../../packages/db/src/index.ts"
+      ]
+    },
+    "esModuleInterop": true
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

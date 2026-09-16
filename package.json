@@ -7,7 +7,7 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p apps/web/tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "db:up": "dbmate --migrations-dir packages/db/migrations up",
@@ -21,7 +21,9 @@
     "verify": "node --env-file-if-exists=.env packages/db/src/verify-cli.ts",
     "decide": "node --env-file-if-exists=.env packages/db/src/decide-cli.ts",
     "analytics": "uv run --directory services/analytics uvicorn mineral_analytics.api:app --port 8000",
-    "db:seed": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f packages/db/seeds/001-rare-earth-issuers.sql"
+    "db:seed": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f packages/db/seeds/001-rare-earth-issuers.sql",
+    "web": "pnpm --filter @mineral/web dev",
+    "web:build": "pnpm --filter @mineral/web build"
   },
   "devDependencies": {
     "@types/node": "^22",

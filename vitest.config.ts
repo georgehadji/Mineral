@@ -17,6 +17,11 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['packages/*/src/**/*.test.ts'],
+    include: ['packages/*/src/**/*.test.ts', 'tests/**/*.test.ts'],
+    // The hermetic tests finish in milliseconds. The integration suites run
+    // whole module DAGs against one PostgreSQL in parallel, and the default 5s
+    // is a stopwatch on that database rather than a check on anything.
+    testTimeout: 30_000,
+    hookTimeout: 60_000,
   },
 });

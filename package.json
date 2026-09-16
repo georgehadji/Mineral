@@ -18,6 +18,7 @@
     "calc": "node --env-file-if-exists=.env packages/db/src/calc-cli.ts",
     "ask": "node --env-file-if-exists=.env packages/db/src/ask-cli.ts",
     "research": "node --env-file-if-exists=.env packages/db/src/research-cli.ts",
+    "verify": "node --env-file-if-exists=.env packages/db/src/verify-cli.ts",
     "analytics": "uv run --directory services/analytics uvicorn mineral_analytics.api:app --port 8000",
     "db:seed": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f packages/db/seeds/001-rare-earth-issuers.sql"
   },

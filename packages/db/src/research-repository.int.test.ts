@@ -20,6 +20,7 @@ describe.skipIf(!url)('the module runtime', () => {
   let companyId: string;
   let documentId: string;
   const run = randomUUID().slice(0, 8);
+  const SOURCE_PREFIX = 'runtime-test-source-';
   const externalId = `runtime-test-${run}`;
 
   /** Planted so a stub can quote something that is genuinely in the chunk. */
@@ -84,6 +85,49 @@ describe.skipIf(!url)('the module runtime', () => {
     ]);
   };
 
+  /**
+   * Removes this suite's fixtures, including any a previous run left behind
+   * after failing. Both integration suites fixture a company and vitest runs
+   * files in parallel, so a suite that cannot clean up after itself breaks the
+   * next run of its neighbour rather than only itself.
+   */
+  async function purge(): Promise<void> {
+    const forSubject = (sql: string) => pool.query(sql, [companyId]);
+    await forSubject(`delete from research.claim_status_events where claim_id in (
+      select id from research.claims where subject_id = $1)`);
+    await forSubject(`delete from research.verification_checks where verification_run_id in (
+      select id from research.verification_runs where research_run_id in (
+        select id from research.runs where subject_id = $1))`);
+    await forSubject(`delete from research.verification_runs where research_run_id in (
+      select id from research.runs where subject_id = $1)`);
+    await forSubject(`delete from research.model_cache where request_hash in (
+      select request_hash from research.model_runs where research_run_id in (
+        select id from research.runs where subject_id = $1))`);
+    await forSubject(`delete from research.claim_evidence where claim_id in (
+      select id from research.claims where subject_id = $1)`);
+    await forSubject(`delete from research.claims where subject_id = $1`);
+    await forSubject(`delete from research.model_runs where research_run_id in (
+      select id from research.runs where subject_id = $1)`);
+    await forSubject(`delete from research.module_runs where run_id in (
+      select id from research.runs where subject_id = $1)`);
+    await forSubject(`delete from research.runs where subject_id = $1`);
+
+    const bySource = (sql: string) => pool.query(sql, [`${SOURCE_PREFIX}%`]);
+    await bySource(`delete from evidence.document_chunks dc
+      using evidence.document_versions dv, evidence.documents d, evidence.sources s
+      where dc.document_version_id = dv.id and dv.document_id = d.id
+        and d.source_id = s.id and s.source_name like $1`);
+    await bySource(`delete from evidence.document_versions dv
+      using evidence.documents d, evidence.sources s
+      where dv.document_id = d.id and d.source_id = s.id and s.source_name like $1`);
+    await bySource(`delete from evidence.document_subjects ds
+      using evidence.documents d, evidence.sources s
+      where ds.document_id = d.id and d.source_id = s.id and s.source_name like $1`);
+    await bySource(`delete from evidence.documents d using evidence.sources s
+      where d.source_id = s.id and s.source_name like $1`);
+    await bySource(`delete from evidence.sources where source_name like $1`);
+  }
+
   beforeAll(async () => {
     pool = createPool(url);
 
@@ -91,11 +135,13 @@ describe.skipIf(!url)('the module runtime', () => {
     if (outcome.status !== 'resolved') throw new Error('seed 001 is missing MP Materials');
     companyId = outcome.company.companyId;
 
+    await purge();
+
     const source = await pool.query<{ id: string }>(
       `insert into evidence.sources (source_name, source_type, source_tier, publisher)
        values ($1, 'filing', 1, 'Test')
        returning id`,
-      [`runtime-test-source-${run}`],
+      [`${SOURCE_PREFIX}${run}`],
     );
     const document = await pool.query<{ id: string }>(
       `insert into evidence.documents (source_id, external_id, document_type, title, published_at)
@@ -124,47 +170,7 @@ describe.skipIf(!url)('the module runtime', () => {
 
   afterAll(async () => {
     if (!pool) return;
-    // Children first: claims and model runs both point at runs and module runs.
-    await pool.query(
-      `delete from research.model_cache where request_hash in (
-         select request_hash from research.model_runs
-          where research_run_id in (select id from research.runs where subject_id = $1))`,
-      [companyId],
-    );
-    // A trigger writes a status event for every claim, so those go first.
-    await pool.query(
-      `delete from research.claim_status_events where claim_id in (
-         select id from research.claims where subject_id = $1)`,
-      [companyId],
-    );
-    await pool.query(
-      `delete from research.claim_evidence where claim_id in (
-         select id from research.claims where subject_id = $1)`,
-      [companyId],
-    );
-    await pool.query(`delete from research.claims where subject_id = $1`, [companyId]);
-    await pool.query(
-      `delete from research.model_runs where research_run_id in (
-         select id from research.runs where subject_id = $1)`,
-      [companyId],
-    );
-    await pool.query(
-      `delete from research.module_runs where run_id in (
-         select id from research.runs where subject_id = $1)`,
-      [companyId],
-    );
-    await pool.query(`delete from research.runs where subject_id = $1`, [companyId]);
-    await pool.query(
-      `delete from evidence.document_chunks where document_version_id in (
-         select id from evidence.document_versions where document_id = $1)`,
-      [documentId],
-    );
-    await pool.query(`delete from evidence.document_versions where document_id = $1`, [documentId]);
-    await pool.query(`delete from evidence.document_subjects where document_id = $1`, [documentId]);
-    await pool.query(`delete from evidence.documents where id = $1`, [documentId]);
-    await pool.query(`delete from evidence.sources where source_name = $1`, [
-      `runtime-test-source-${run}`,
-    ]);
+    await purge();
     await pool.end();
   });
 

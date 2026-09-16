@@ -41,3 +41,9 @@ export {
   type RunResearchResult,
   type Step,
 } from './research-repository.ts';
+export {
+  latestRunFor,
+  verifyRun,
+  VerificationError,
+  type VerificationResult,
+} from './verification-repository.ts';

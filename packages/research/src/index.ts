@@ -24,3 +24,15 @@ export {
   IMPLEMENTATIONS_BY_CODE,
   MODULE_IMPLEMENTATIONS,
 } from './implementations.ts';
+export {
+  numbersIn,
+  quoteIsContained,
+  verifyClaims,
+  type CheckResult,
+  type CheckSeverity,
+  type CheckStatus,
+  type CheckType,
+  type VerifiableClaim,
+  type VerifiableEvidence,
+  type VerificationVerdict,
+} from './verification.ts';

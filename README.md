@@ -36,7 +36,7 @@ cd services/analytics && uv sync --extra dev && uv run pytest
 
 `pnpm check` runs the TypeScript typecheck and the Vitest suite. Database-backed
 tests are skipped unless `DATABASE_URL` is set, so the default run is hermetic.
-Verified locally: 119 hermetic tests, 151 with a database, and 63 Python tests.
+Verified locally: 137 hermetic tests, 174 with a database, and 63 Python tests.
 
 Configuration lives in `.env`, which Git ignores. Copy the example and fill
 in what you have:
@@ -195,6 +195,31 @@ twice for the same thing returns the first run rather than writing a second. A
 run against a subject with no ingested evidence is refused outright, because an
 empty snapshot produces confident UNKNOWNs that read like findings.
 
+## Verification
+
+A separate deterministic pass over what a run wrote.
+
+```bash
+pnpm verify "MP"
+```
+
+Four rules, none of which consults a model: a quote must appear in the chunk it
+cites, every number in a statement must appear in the evidence that statement
+cites, a financial claim may not rest only on a tier 4 or 5 source, and two
+claims sharing a `claim_key` must not say different things. Each rule writes a
+`research.verification_checks` row whether it passes or fails, so a later reader
+can see what was checked rather than inferring it from silence.
+
+The rules only work together. A fabricated quote can perfectly well contain the
+fabricated number that cites it, so the number rule alone would pass it;
+containment is what anchors the quote to a document. A claim that fails a check
+at error or critical severity becomes `CONTRADICTED`, and the status event
+records which check did it.
+
+This repeats work the module runtime already does at write time, on purpose. A
+check that only runs on the way in cannot catch a row that arrived another way,
+and cannot be re-run in a year against a claim whose source has since changed.
+
 ## Schema check
 
 ```bash
@@ -221,4 +246,4 @@ Then run the migration and test with `psql -h localhost -p 55432 -U postgres -d 
 
 ## Implementation sequence
 
-See `docs/architecture/00-architecture-understanding.md` §J. Phases 0 to 6 are done. Next: phase 7, deterministic verification.
+See `docs/architecture/00-architecture-understanding.md` §J. Phases 0 to 7 are done. Next: phase 8, the decision layer.

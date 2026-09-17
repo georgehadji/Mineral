@@ -1,6 +1,6 @@
 // Node's type stripper does not rewrite specifiers, so relative imports carry
 // their real .ts extension (tsconfig: allowImportingTsExtensions).
-import { CORE_RECIPE } from '@mineral/research';
+import { CORE_RECIPE, DEEP_RECIPE } from '@mineral/research';
 import { createPool } from './client.ts';
 import { runResearch } from './research-repository.ts';
 
@@ -9,6 +9,10 @@ import { runResearch } from './research-repository.ts';
  *
  *   pnpm research "MP"
  *   pnpm research "MP" --as-of 2026-06-30 --cached
+ *   pnpm research "MP" --deep
+ *
+ * --deep runs DEEP_RECIPE: fifteen modules instead of nine, including the
+ * ones that only the deep path has. It is the dearer run by some way.
  *
  * The same subject, recipe, date and snapshot make the same run: a second
  * invocation returns the first run untouched rather than writing another.
@@ -16,7 +20,7 @@ import { runResearch } from './research-repository.ts';
 const args = process.argv.slice(2);
 const query = args[0];
 if (!query || query.startsWith('--')) {
-  console.error('usage: pnpm research "<company>" [--as-of YYYY-MM-DD] [--cached]');
+  console.error('usage: pnpm research "<company>" [--as-of YYYY-MM-DD] [--cached] [--deep]');
   process.exit(2);
 }
 
@@ -29,7 +33,7 @@ const pool = createPool();
 try {
   const result = await runResearch(pool, {
     query,
-    recipe: CORE_RECIPE,
+    recipe: args.includes('--deep') ? DEEP_RECIPE : CORE_RECIPE,
     asOfDate: flag('as-of'),
     cacheOnly: args.includes('--cached'),
   });

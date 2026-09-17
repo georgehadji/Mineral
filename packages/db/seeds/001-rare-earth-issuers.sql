@@ -1,11 +1,18 @@
--- Seed: seven SEC-registered rare-earth issuers plus four non-US issuers.
+-- Seed: seven SEC-registered rare-earth issuers plus twelve that file
+-- nowhere the SEC can see them.
 --
 -- Every CIK here is copied from the SEC's own registry file
--- https://www.sec.gov/files/company_tickers.json (fetched 2026-09-14, extra
--- issuers below fetched 2026-09-17). Fields that could not be verified from
--- a primary source are left null rather than guessed: an absent identifier
--- is a correct statement about what we know, a wrong one corrupts entity
--- resolution permanently.
+-- https://www.sec.gov/files/company_tickers.json (fetched 2026-09-14, later
+-- issuers 2026-09-17). An issuer with no SEC registration carries the name
+-- and ticker its own exchange publishes instead: the SSE and SZSE company
+-- profiles for the Chinese listings, the LSE instrument record and the TMX
+-- listed-company directory for the rest, and the ISO 10383 register for
+-- every MIC below (all fetched 2026-09-17). Each name is spelled the way the
+-- registry that issued it spells it, which is why some of them shout.
+--
+-- Fields that could not be verified from a primary source are left null
+-- rather than guessed: an absent identifier is a correct statement about
+-- what we know, a wrong one corrupts entity resolution permanently.
 --
 -- Idempotent: re-running changes nothing. Natural keys are the CIK for US
 -- filers, the legal name otherwise, and (exchange, ticker) for listings.
@@ -95,6 +102,7 @@ select pg_temp.seed_country('US', 'United States');
 select pg_temp.seed_country('AU', 'Australia');
 select pg_temp.seed_country('CA', 'Canada');
 select pg_temp.seed_country('CN', 'China');
+select pg_temp.seed_country('GB', 'United Kingdom');
 
 select pg_temp.seed_exchange('XNYS', 'New York Stock Exchange', 'US');
 select pg_temp.seed_exchange('XNAS', 'Nasdaq Stock Market', 'US');
@@ -102,6 +110,9 @@ select pg_temp.seed_exchange('XASE', 'NYSE American', 'US');
 select pg_temp.seed_exchange('XASX', 'Australian Securities Exchange', 'AU');
 select pg_temp.seed_exchange('XTSE', 'Toronto Stock Exchange', 'CA');
 select pg_temp.seed_exchange('XTSX', 'TSX Venture Exchange', 'CA');
+select pg_temp.seed_exchange('XSHG', 'Shanghai Stock Exchange', 'CN');
+select pg_temp.seed_exchange('XSHE', 'Shenzhen Stock Exchange', 'CN');
+select pg_temp.seed_exchange('XLON', 'London Stock Exchange', 'GB');
 
 select pg_temp.seed_issuer(
   'MP Materials Corp. / DE', 'MP Materials', '0001801368', 'US',
@@ -171,5 +182,75 @@ select pg_temp.seed_issuer(
 select pg_temp.seed_issuer(
   'Neo Performance Materials Inc.', 'Neo Performance Materials', null, 'CA',
   'https://neomaterials.com', 'XTSE', 'NEO', 'CAD');
+
+-- China runs most of this chain and none of it was represented above. These
+-- five are its listed end, on Shanghai and Shenzhen, and they are the first
+-- rows here to reach the magnet stage in volume rather than in plan. None of
+-- them is an SEC registrant, so none has a CIK; the exchange profile is the
+-- registry of record and supplies the English name below.
+select pg_temp.seed_issuer(
+  'JL MAG RARE-EARTH CO., LTD.', 'JL MAG', null, 'CN',
+  'https://www.jlmag.com.cn', 'XSHE', '300748', 'CNY');
+
+select pg_temp.seed_issuer(
+  'BEIJING ZHONG KE SAN HUAN HIGH-TECH CO., LTD', 'Zhongke Sanhuan', null, 'CN',
+  'https://www.san-huan.com.cn', 'XSHE', '000970', 'CNY');
+
+-- The SSE company profile carries no website field, so these three have none
+-- instead of a hostname that looked plausible.
+select pg_temp.seed_issuer(
+  'China Northern Rare Earth (Group) High-Tech Co.,Ltd', 'China Northern Rare Earth',
+  null, 'CN', null, 'XSHG', '600111', 'CNY');
+
+select pg_temp.seed_issuer(
+  'Ningbo Yunsheng Co.,Ltd.', 'Ningbo Yunsheng', null, 'CN',
+  null, 'XSHG', '600366', 'CNY');
+
+select pg_temp.seed_issuer(
+  'Shenghe Resources Holding Co.,Ltd', 'Shenghe Resources', null, 'CN',
+  null, 'XSHG', '600392', 'CNY');
+
+-- For a Chinese issuer the registered Chinese name is the resolution key and
+-- the English one is the translation, which is the reverse of every other row
+-- in this file. Both come from the same exchange profile as the listing.
+insert into core.company_aliases (company_id, alias, alias_type)
+select c.id, v.local_name, 'local_name'
+  from (values
+    ('JL MAG RARE-EARTH CO., LTD.',
+     '江西金力永磁科技股份有限公司'),
+    ('BEIJING ZHONG KE SAN HUAN HIGH-TECH CO., LTD',
+     '北京中科三环高技术股份有限公司'),
+    ('China Northern Rare Earth (Group) High-Tech Co.,Ltd',
+     '中国北方稀土(集团)高科技股份有限公司'),
+    ('Ningbo Yunsheng Co.,Ltd.',
+     '宁波韵升股份有限公司'),
+    ('Shenghe Resources Holding Co.,Ltd',
+     '盛和资源控股股份有限公司')
+  ) as v(legal_name, local_name)
+  join core.companies c on c.legal_name = v.legal_name
+on conflict do nothing;
+
+-- Country null for the same reason the three US-listed rows above have one:
+-- the TMX directory publishes a symbol and a name and nothing else, and no
+-- other register consulted states this issuer's jurisdiction.
+select pg_temp.seed_issuer(
+  'Aclara Resources Inc.', 'Aclara Resources', null, null,
+  null, 'XTSE', 'ARA', 'CAD');
+
+-- The LSE quotes PRE in GBX, which is pence rather than an ISO 4217 currency.
+-- This column holds the currency, so it holds GBP.
+select pg_temp.seed_issuer(
+  'PENSANA PLC', 'Pensana', null, 'GB',
+  null, 'XLON', 'PRE', 'GBP');
+
+-- Recorded on TSX Venture, its home listing; the AIM line under the same
+-- ticker is a depositary interest over these same Canadian shares. No CIK on
+-- purpose: there is an SEC registrant named Mkango Rare Earths Ltd, CIK
+-- 2052373, formerly Lancaster Exploration Ltd, but it is a different legal
+-- entity and its registration was still an unconsummated F-4 on 2026-09-17.
+-- Attaching that CIK here is precisely the corruption the header warns about.
+select pg_temp.seed_issuer(
+  'Mkango Resources Ltd.', 'Mkango Resources', null, 'CA',
+  null, 'XTSX', 'MKA', 'CAD');
 
 commit;

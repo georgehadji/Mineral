@@ -93,6 +93,68 @@ export const ClaimSchema = z.object({
 });
 
 /**
+ * The nine stages, as codes. Seeded by 002-supply-chain-ontology.sql and
+ * repeated here because a module has to be told the vocabulary it may use;
+ * `supply_chain_position` builds its prompt from this list rather than from a
+ * second copy written out by hand.
+ */
+export const SUPPLY_CHAIN_STAGES = [
+  'mining',
+  'concentration',
+  'separation',
+  'refining',
+  'metal',
+  'alloy',
+  'magnet',
+  'motor',
+  'recycling',
+] as const;
+
+/** ontology.facilities.status, which is the plant's condition, not a verdict. */
+export const FACILITY_STATUSES = [
+  'planned',
+  'construction',
+  'commissioning',
+  'operating',
+  'care_and_maintenance',
+  'closed',
+  'unknown',
+] as const;
+
+/**
+ * A site a module proposes, so that a company can be placed at a stage.
+ *
+ * Same shape of bargain as an assumption: a model may propose, only a rule may
+ * accept. A claim naming a stage in prose cannot be promoted, because "takes
+ * NdPr oxide from separation into metal" names two stages and a parser would
+ * have to guess which one the company occupies. This asks for the answer as
+ * data and keeps the prose claim as the thing the evidence hangs off.
+ */
+export const FacilityProposalSchema = z.object({
+  name: z
+    .string()
+    .min(1)
+    .describe('the site as the filing names it, e.g. Mountain Pass; not a description'),
+  stage_code: z.enum(SUPPLY_CHAIN_STAGES).describe('the one stage this site occupies'),
+  material_code: z
+    .string()
+    .nullable()
+    .default(null)
+    .describe('code of the material it puts out, or null when the filing does not say'),
+  country_code: z
+    .string()
+    .length(2)
+    .nullable()
+    .default(null)
+    .describe('ISO 3166-1 alpha-2, or null when the filing does not say'),
+  status: z.enum(FACILITY_STATUSES).default('unknown').describe('unknown unless the filing says'),
+  source_claim_key: z
+    .string()
+    .min(1)
+    .describe('claim_key of a finding in this run that says this site is at this stage'),
+});
+
+/**
  * An assumption a module proposes. Report G allows exactly this much: a value
  * with a range, a rationale and the claim it rests on, at status `proposed`. It
  * does not allow a module to approve one. Approval is deterministic policy and
@@ -116,11 +178,14 @@ export const ModuleOutputSchema = z.object({
   claims: z.array(ClaimSchema),
   /** Empty for every module that is not proposing valuation inputs. */
   assumptions: z.array(AssumptionProposalSchema).default([]),
+  /** Empty for every module that is not placing a company in the chain. */
+  facilities: z.array(FacilityProposalSchema).default([]),
 });
 
 export type EvidenceRef = z.infer<typeof EvidenceRefSchema>;
 export type Claim = z.infer<typeof ClaimSchema>;
 export type AssumptionProposal = z.infer<typeof AssumptionProposalSchema>;
+export type FacilityProposal = z.infer<typeof FacilityProposalSchema>;
 export type ModuleOutput = z.infer<typeof ModuleOutputSchema>;
 
 /** Minimum quote length. A three-word quote matches by accident. */
@@ -178,6 +243,26 @@ export function validateOutput(code: string, output: ModuleOutput): ModuleOutput
   for (const assumption of output.assumptions) {
     if (codes.has(assumption.code)) fail(`assumption ${assumption.code} is proposed twice`);
     codes.add(assumption.code);
+  }
+
+  // A facility is a claim restated as data, so the claim has to be in this same
+  // output. Unlike an assumption's source claim, which may be a finding from an
+  // earlier module, a site the module did not itself assert is a site nothing
+  // in this run cited.
+  const sites = new Set<string>();
+  for (const facility of output.facilities) {
+    const key = JSON.stringify([facility.name, facility.stage_code]);
+    if (sites.has(key)) {
+      fail(`facility ${facility.name} is proposed twice at ${facility.stage_code}`);
+    }
+    sites.add(key);
+
+    if (!seen.has(facility.source_claim_key)) {
+      fail(
+        `facility ${facility.name} rests on claim ${facility.source_claim_key}, ` +
+          'which this output does not contain',
+      );
+    }
   }
   return output;
 }

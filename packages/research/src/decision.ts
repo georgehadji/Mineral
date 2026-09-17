@@ -1,12 +1,15 @@
 import { z } from 'zod';
+import { FACILITY_STATUSES } from './runtime.ts';
 
 /**
  * The decision layer, pure half (report J.8).
  *
- * Two deterministic gates live here. The first decides which proposed
+ * Three deterministic gates live here. The first decides which proposed
  * assumptions a valuation is allowed to rest on; the second decides whether a
- * proposed thesis is anchored to anything real. Both are the same idea applied
- * twice: a model may propose, and only a rule may accept.
+ * proposed thesis is anchored to anything real; the third decides which
+ * proposed sites are allowed to become rows in the ontology. All three are the
+ * same idea applied three times: a model may propose, and only a rule may
+ * accept.
  *
  * Report I.22 splits what the recipe used to call one `valuation` module into
  * `valuation_assumptions` (a model proposes) -> `assumption_policy` (this file
@@ -120,6 +123,95 @@ function judge(
     }
   }
   return { status: 'approved', reason: 'within band, founded on a standing claim' };
+}
+
+// --- facility policy --------------------------------------------------------
+
+export interface FacilityPolicyInput {
+  name: string;
+  stageCode: string;
+  materialCode: string | null;
+  countryCode: string | null;
+  status: string;
+  /** Epistemic status of the claim it rests on; null when the claim is missing. */
+  sourceClaimStatus: string | null;
+  /** Whether stageCode names a stage that exists. */
+  stageKnown: boolean;
+  /** Whether materialCode names a material that exists. True when it is null. */
+  materialKnown: boolean;
+  /** Whether countryCode names a country that exists. True when it is null. */
+  countryKnown: boolean;
+}
+
+export interface FacilityDecision {
+  name: string;
+  stageCode: string;
+  status: 'approved' | 'rejected';
+  reason: string;
+}
+
+const FACILITY_STATUS_SET: ReadonlySet<string> = new Set(FACILITY_STATUSES);
+
+/**
+ * Deterministic approval of proposed sites. Same contract as applyPolicy: the
+ * whole set goes in, because one rule is about the set.
+ *
+ * Nothing here is recorded as a verdict anywhere. It does not need to be: the
+ * proposals are already stored verbatim in research.module_runs.output, and a
+ * pure function over stored input can be re-run to get the same answer. A
+ * rejection is reproducible rather than remembered.
+ */
+export function applyFacilityPolicy(
+  proposals: readonly FacilityPolicyInput[],
+): FacilityDecision[] {
+  const counts = new Map<string, number>();
+  for (const proposal of proposals) {
+    const key = siteKey(proposal);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return proposals.map((proposal) => ({
+    name: proposal.name,
+    stageCode: proposal.stageCode,
+    ...judgeFacility(proposal, counts),
+  }));
+}
+
+function siteKey(proposal: FacilityPolicyInput): string {
+  return JSON.stringify([proposal.name.trim().toLowerCase(), proposal.stageCode]);
+}
+
+function judgeFacility(
+  proposal: FacilityPolicyInput,
+  counts: ReadonlyMap<string, number>,
+): { status: 'approved' | 'rejected'; reason: string } {
+  const reject = (reason: string) => ({ status: 'rejected' as const, reason });
+
+  if (proposal.name.trim().length === 0) return reject('no name; a site has to be called something');
+  if (!proposal.stageKnown) return reject(`${proposal.stageCode} is not a stage in this ontology`);
+  if (!proposal.materialKnown) {
+    return reject(`${proposal.materialCode} is not a material in this ontology`);
+  }
+  if (!proposal.countryKnown) return reject(`${proposal.countryCode} is not a country on file`);
+  if (!FACILITY_STATUS_SET.has(proposal.status)) {
+    return reject(`${proposal.status} is not a facility status`);
+  }
+
+  // The same rule the assumption gate applies, and for the same reason:
+  // verification demotes a claim in place, and a row that outlives the claim
+  // under it is how a withdrawn finding keeps its authority.
+  if (proposal.sourceClaimStatus === null) {
+    return reject('no source claim; a site with no finding under it is a guess');
+  }
+  if (!FOUNDABLE_STATUSES.has(proposal.sourceClaimStatus)) {
+    return reject(`its source claim is ${proposal.sourceClaimStatus}`);
+  }
+
+  // One row per site per stage. Two proposals for the same site at the same
+  // stage disagree about something, and picking one arbitrarily hides that.
+  if ((counts.get(siteKey(proposal)) ?? 0) > 1) {
+    return reject(`${proposal.name} is proposed more than once at ${proposal.stageCode}`);
+  }
+  return { status: 'approved', reason: 'named, staged, and founded on a standing claim' };
 }
 
 // --- thesis synthesis -------------------------------------------------------

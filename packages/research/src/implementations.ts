@@ -1,6 +1,8 @@
 import { ASSUMPTION_BANDS } from './decision.ts';
 import { RecipeSchema, type Recipe } from './recipe.ts';
 import {
+  FACILITY_STATUSES,
+  SUPPLY_CHAIN_STAGES,
   validateOutput,
   type Ask,
   type ModuleImpl,
@@ -95,7 +97,7 @@ const entityResolution: ModuleImpl = {
     if (!context.subject.companyId) {
       throw new Error('entity_resolution: the run has no resolved subject');
     }
-    return { claims: [], assumptions: [] };
+    return { claims: [], assumptions: [], facilities: [] };
   },
 };
 
@@ -314,14 +316,22 @@ const industryPosition: ModuleImpl = {
 const supplyChainPosition: ModuleImpl = {
   code: 'supply_chain_position',
   prompt: {
-    version: '1.0.0',
+    // 1.1.0 adds the facilities array. The claims it asks for are unchanged.
+    version: '1.1.0',
     system:
       'You locate a company in a physical supply chain: which stages it occupies, what it takes ' +
       'in, what it puts out, and who it depends on either side.\n\n' +
       CITATION_RULES +
-      '\nName a stage using one of: mining, concentration, separation, refining, metal, alloy, ' +
-      'magnet, motor, recycling. A company that plainly occupies none of them gets an UNKNOWN ' +
-      'claim rather than an invented stage.',
+      `\nName a stage using one of: ${SUPPLY_CHAIN_STAGES.join(', ')}. A company that plainly ` +
+      'occupies none of them gets an UNKNOWN claim rather than an invented stage.\n\n' +
+      'Where the evidence names a site -- a mine, a plant, a refinery -- also return it in ' +
+      '`facilities`, one entry per site per stage, so the same site appears twice when the ' +
+      'evidence says it both mines and separates. `name` is the site as the filing names it, not ' +
+      'a description of it. `source_claim_key` must be the claim_key of a claim in this same ' +
+      `answer. \`status\` is one of: ${FACILITY_STATUSES.join(', ')}, and is "unknown" unless the ` +
+      'evidence says which. Leave `material_code` and `country_code` null rather than inferring ' +
+      'them. A site you cannot tie to one stage does not belong in `facilities`; say it in a ' +
+      'claim instead.',
   },
   run(context, ask) {
     return askFor(
@@ -332,7 +342,7 @@ const supplyChainPosition: ModuleImpl = {
       `Subject: ${subjectLine(context)}\n\n` +
         'Which stages of its supply chain does this company occupy, what does each stage consume ' +
         'and produce, and where is it dependent on someone else? Name the stage in every ' +
-        'statement. Six claims at most.\n\n' +
+        'statement. Six claims at most, plus the sites behind them in `facilities`.\n\n' +
         `What earlier modules found:\n${renderUpstream(context)}\n\n` +
         `Evidence:\n${renderChunks(context)}\n\nFigures:\n${renderFacts(context)}`,
     );

@@ -1,6 +1,12 @@
 import type { Pool, PoolClient } from 'pg';
 import type { UUID } from '@mineral/domain';
 import { CalcResponseSchema } from '@mineral/schemas';
+import {
+  FacilityProposalSchema,
+  applyFacilityPolicy,
+  type FacilityDecision,
+  type FacilityProposal,
+} from '@mineral/research';
 import { inTransaction } from './client.ts';
 import { currentFactVersion, ensureFactDefinitions, upsertFact } from './facts.ts';
 import type { CalcFn } from './decision-repository.ts';
@@ -274,6 +280,199 @@ function toFacility(row: FacilityRow): FacilityView {
     countryCode: row.country_code,
     status: row.status,
   };
+}
+
+// --- promotion: claim -> facility -------------------------------------------
+
+export interface FacilityPromotion extends FacilityDecision {
+  /** The row it became, or null when policy refused it. */
+  facilityId: UUID | null;
+  sourceClaimId: UUID | null;
+}
+
+export interface PromoteFacilitiesResult {
+  runId: UUID;
+  companyId: UUID;
+  decisions: FacilityPromotion[];
+  promoted: number;
+}
+
+interface StoredProposal {
+  proposal: FacilityProposal;
+  claimId: UUID | null;
+  claimStatus: string | null;
+}
+
+/**
+ * Proposals as the run left them. They are read back out of
+ * research.module_runs.output rather than from a staging table of their own:
+ * the output is already stored verbatim, and a proposal is not a row waiting to
+ * be approved so much as a sentence waiting to be checked.
+ */
+async function loadFacilityProposals(pool: Pool, runId: UUID): Promise<StoredProposal[]> {
+  const { rows } = await pool.query<{ output: unknown; claim_map: Record<string, [string, string]> }>(
+    `select mr.output,
+            coalesce((
+              select json_object_agg(c.claim_key, json_build_array(c.id, c.epistemic_status))
+                from research.claims c
+               where c.module_run_id = mr.id), '{}'::json) as claim_map
+       from research.module_runs mr
+      where mr.run_id = $1 and mr.status = 'completed' and mr.output is not null`,
+    [runId],
+  );
+
+  const out: StoredProposal[] = [];
+  for (const row of rows) {
+    const raw = (row.output as { facilities?: unknown } | null)?.facilities;
+    if (!Array.isArray(raw)) continue;
+    for (const entry of raw) {
+      const parsed = FacilityProposalSchema.safeParse(entry);
+      // A stored output that no longer parses is a contract change, not a
+      // proposal. Skipping it keeps an old run promotable under a new schema
+      // instead of failing the whole pass on one stale row.
+      if (!parsed.success) continue;
+      const found = row.claim_map?.[parsed.data.source_claim_key];
+      out.push({
+        proposal: parsed.data,
+        claimId: found?.[0] ?? null,
+        claimStatus: found?.[1] ?? null,
+      });
+    }
+  }
+  return out;
+}
+
+async function knownCodes(pool: Pool): Promise<{
+  stages: Map<string, UUID>;
+  materials: Map<string, UUID>;
+  countries: Set<string>;
+}> {
+  const [stageRows, materialRows, countryRows] = await Promise.all([
+    pool.query<{ code: string; id: string }>(`select code, id from ontology.supply_chain_stages`),
+    pool.query<{ code: string; id: string }>(`select code, id from ontology.materials`),
+    pool.query<{ iso2: string }>(`select iso2 from ontology.countries`),
+  ]);
+  return {
+    stages: new Map(stageRows.rows.map((row) => [row.code, row.id])),
+    materials: new Map(materialRows.rows.map((row) => [row.code, row.id])),
+    countries: new Set(countryRows.rows.map((row) => row.iso2)),
+  };
+}
+
+/**
+ * Turns the sites a completed run proposed into rows in the ontology.
+ *
+ * The shape is the assumption path's, deliberately: a module proposed, a pure
+ * rule in `applyFacilityPolicy` judged, and only then does anything persist.
+ * What lands carries `source_claim_id`, so every promoted facility can be
+ * walked back to the claim that produced it and from there to the quote.
+ *
+ * Re-running this over the same run is safe and is the normal case: the key is
+ * (company, name, stage), so a second pass updates the row it wrote the first
+ * time rather than adding a twin. A proposal whose claim has since been
+ * demoted to CONTRADICTED or STALE stops being approvable, which is the point
+ * of founding the row on the claim rather than copying its words.
+ */
+export async function promoteFacilities(
+  pool: Pool,
+  runId: UUID,
+): Promise<PromoteFacilitiesResult> {
+  const { rows } = await pool.query<{ subject_id: string; status: string }>(
+    `select subject_id, status from research.runs where id = $1`,
+    [runId],
+  );
+  const run = rows[0];
+  if (!run) throw new OntologyError(`no research run ${runId}`);
+  if (run.status !== 'completed') {
+    throw new OntologyError(`run ${runId} is ${run.status}; promotion needs a completed run`);
+  }
+
+  const [stored, codes] = await Promise.all([loadFacilityProposals(pool, runId), knownCodes(pool)]);
+
+  const verdicts = applyFacilityPolicy(
+    stored.map((item) => ({
+      name: item.proposal.name,
+      stageCode: item.proposal.stage_code,
+      materialCode: item.proposal.material_code,
+      countryCode: item.proposal.country_code,
+      status: item.proposal.status,
+      sourceClaimStatus: item.claimStatus,
+      stageKnown: codes.stages.has(item.proposal.stage_code),
+      materialKnown:
+        item.proposal.material_code === null || codes.materials.has(item.proposal.material_code),
+      countryKnown:
+        item.proposal.country_code === null || codes.countries.has(item.proposal.country_code),
+    })),
+  );
+
+  const decisions: FacilityPromotion[] = [];
+  for (const [index, verdict] of verdicts.entries()) {
+    const item = stored[index]!;
+    if (verdict.status !== 'approved') {
+      decisions.push({ ...verdict, facilityId: null, sourceClaimId: item.claimId });
+      continue;
+    }
+    const facilityId = await upsertFacility(pool, run.subject_id, item, codes);
+    decisions.push({ ...verdict, facilityId, sourceClaimId: item.claimId });
+  }
+
+  return {
+    runId,
+    companyId: run.subject_id,
+    decisions,
+    promoted: decisions.filter((decision) => decision.facilityId !== null).length,
+  };
+}
+
+async function upsertFacility(
+  pool: Pool,
+  companyId: UUID,
+  item: StoredProposal,
+  codes: { stages: Map<string, UUID>; materials: Map<string, UUID> },
+): Promise<UUID> {
+  const stageId = codes.stages.get(item.proposal.stage_code)!;
+  const materialId = item.proposal.material_code
+    ? (codes.materials.get(item.proposal.material_code) ?? null)
+    : null;
+
+  // Looked up before inserting rather than `on conflict`, because minting the
+  // entity id has to happen in the insert's own statement and would leave an
+  // orphan in core.entities every time the conflict path won.
+  return inTransaction(pool, async (client) => {
+    const existing = await client.query<{ id: string }>(
+      `select id from ontology.facilities
+        where company_id = $1 and name = $2 and stage_id is not distinct from $3`,
+      [companyId, item.proposal.name, stageId],
+    );
+
+    const values = [
+      materialId,
+      item.proposal.country_code,
+      item.proposal.status,
+      item.claimId,
+    ] as const;
+
+    const found = existing.rows[0];
+    if (found) {
+      await client.query(
+        `update ontology.facilities
+            set primary_material_id = $2, country_code = $3, status = $4, source_claim_id = $5
+          where id = $1`,
+        [found.id, ...values],
+      );
+      return found.id;
+    }
+
+    const { rows } = await client.query<{ id: string }>(
+      `insert into ontology.facilities
+         (id, company_id, name, stage_id, primary_material_id, country_code, status,
+          source_claim_id)
+       values (core.new_entity('facility'), $1, $2, $3, $4, $5, $6, $7)
+       returning id`,
+      [companyId, item.proposal.name, stageId, ...values],
+    );
+    return rows[0]!.id;
+  });
 }
 
 /** Who has a plant at one stage. The direct form of "who does separation". */

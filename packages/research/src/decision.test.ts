@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   ThesisOutputSchema,
+  applyFacilityPolicy,
   applyPolicy,
   validateThesis,
+  type FacilityPolicyInput,
   type PolicyInput,
   type ThesisOutput,
 } from './decision.ts';
@@ -18,6 +20,92 @@ const proposal = (over: Partial<PolicyInput> = {}): PolicyInput => ({
 });
 
 const verdictFor = (input: PolicyInput) => applyPolicy([input])[0]!;
+
+const site = (over: Partial<FacilityPolicyInput> = {}): FacilityPolicyInput => ({
+  name: 'Mountain Pass',
+  stageCode: 'separation',
+  materialCode: 'ndpr_oxide',
+  countryCode: 'US',
+  status: 'operating',
+  sourceClaimStatus: 'DERIVED',
+  stageKnown: true,
+  materialKnown: true,
+  countryKnown: true,
+  ...over,
+});
+
+const siteVerdict = (input: FacilityPolicyInput) => applyFacilityPolicy([input])[0]!;
+
+describe('facility policy', () => {
+  it('approves a named site at a known stage founded on a standing claim', () => {
+    expect(siteVerdict(site())).toMatchObject({ name: 'Mountain Pass', status: 'approved' });
+  });
+
+  it('refuses a site with no claim under it', () => {
+    expect(siteVerdict(site({ sourceClaimStatus: null }))).toMatchObject({
+      status: 'rejected',
+      reason: expect.stringContaining('no source claim'),
+    });
+  });
+
+  /**
+   * The rule the whole path exists for. A model may assert HYPOTHESIS, and a
+   * hypothesised plant becoming a row is how a guess acquires the authority of
+   * the ontology.
+   */
+  it.each(['HYPOTHESIS', 'UNKNOWN', 'CONTRADICTED', 'STALE'])(
+    'refuses a site founded on a %s claim',
+    (status) => {
+      expect(siteVerdict(site({ sourceClaimStatus: status }))).toMatchObject({
+        status: 'rejected',
+        reason: expect.stringContaining(status),
+      });
+    },
+  );
+
+  it('refuses a stage, material or country this ontology does not have', () => {
+    expect(siteVerdict(site({ stageKnown: false, stageCode: 'smelting' }))).toMatchObject({
+      status: 'rejected',
+      reason: expect.stringContaining('not a stage'),
+    });
+    expect(siteVerdict(site({ materialKnown: false, materialCode: 'unobtainium' }))).toMatchObject({
+      status: 'rejected',
+      reason: expect.stringContaining('not a material'),
+    });
+    expect(siteVerdict(site({ countryKnown: false, countryCode: 'ZZ' }))).toMatchObject({
+      status: 'rejected',
+      reason: expect.stringContaining('not a country'),
+    });
+  });
+
+  it('refuses a nameless site and an invented status', () => {
+    expect(siteVerdict(site({ name: '   ' }))).toMatchObject({ status: 'rejected' });
+    expect(siteVerdict(site({ status: 'ramping' }))).toMatchObject({
+      status: 'rejected',
+      reason: expect.stringContaining('not a facility status'),
+    });
+  });
+
+  it('allows a site whose output the ontology does not model', () => {
+    // USA Rare Earth's Cheshire plant: the filing says "metal manufacturing"
+    // and names no product, which is a gap and not a disqualification.
+    expect(siteVerdict(site({ materialCode: null }))).toMatchObject({ status: 'approved' });
+  });
+
+  it('refuses both halves of a site proposed twice at one stage', () => {
+    const verdicts = applyFacilityPolicy([site({ status: 'operating' }), site({ status: 'closed' })]);
+    expect(verdicts.every((verdict) => verdict.status === 'rejected')).toBe(true);
+    expect(verdicts[0]!.reason).toContain('more than once');
+  });
+
+  it('keeps one site at two stages, which is a mine that also separates', () => {
+    const verdicts = applyFacilityPolicy([
+      site({ stageCode: 'mining', materialCode: 'rare_earth_ore' }),
+      site({ stageCode: 'separation' }),
+    ]);
+    expect(verdicts.every((verdict) => verdict.status === 'approved')).toBe(true);
+  });
+});
 
 describe('assumption policy', () => {
   it('approves a banded value founded on a standing claim', () => {

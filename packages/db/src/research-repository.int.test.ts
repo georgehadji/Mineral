@@ -11,6 +11,7 @@ import type { Transport } from '@mineral/ai';
 import { CORE_RECIPE } from '@mineral/research';
 import { createPool, type Pool } from './client.ts';
 import { runResearch } from './research-repository.ts';
+import { promoteFacilities } from './ontology-repository.ts';
 import { resolveCompany } from './identity-repository.ts';
 
 const url = process.env.DATABASE_URL;
@@ -43,7 +44,7 @@ describe.skipIf(!url)('the module runtime', () => {
     return last[1]!;
   }
 
-  const reply = (claims: unknown[]): { status: number; body: string } => ({
+  const reply = (claims: unknown[], facilities: unknown[] = []): { status: number; body: string } => ({
     status: 200,
     body: JSON.stringify({
       choices: [
@@ -51,7 +52,13 @@ describe.skipIf(!url)('the module runtime', () => {
           finish_reason: 'tool_calls',
           message: {
             tool_calls: [
-              { type: 'function', function: { name: 'record_result', arguments: JSON.stringify({ claims }) } },
+              {
+                type: 'function',
+                function: {
+                  name: 'record_result',
+                  arguments: JSON.stringify({ claims, facilities }),
+                },
+              },
             ],
           },
         },
@@ -59,6 +66,39 @@ describe.skipIf(!url)('the module runtime', () => {
       usage: { prompt_tokens: 100, completion_tokens: 20, cost: 0.0001 },
     }),
   });
+
+  /**
+   * The sites, proposed exactly once across the whole run.
+   *
+   * This transport answers every module the same way, and six identical
+   * proposals would be six duplicates that the policy is right to refuse in a
+   * heap. Only the first module to ask gets them, which is what one module
+   * naming a site looks like from the promoter's side.
+   */
+  let sitesOffered = false;
+  const sites = () => {
+    if (sitesOffered) return [];
+    sitesOffered = true;
+    return [
+      {
+        name: `Test Separation Plant ${run}`,
+        stage_code: 'separation',
+        material_code: 'ndpr_oxide',
+        country_code: 'US',
+        status: 'operating',
+        source_claim_key: `production_volume_${run}`,
+      },
+      {
+        // Founded on the UNKNOWN claim, so policy has to refuse it.
+        name: `Test Magnet Plant ${run}`,
+        stage_code: 'magnet',
+        material_code: null,
+        country_code: null,
+        status: 'planned',
+        source_claim_key: `unanswered_${run}`,
+      },
+    ];
+  };
 
   /** Quotes the planted sentence verbatim, as a well-behaved module would. */
   const honest: Transport = async (_url, init) => {
@@ -82,7 +122,7 @@ describe.skipIf(!url)('the module runtime', () => {
         confidence: 0.2,
         evidence: [],
       },
-    ]);
+    ], sites());
   };
 
   /**
@@ -93,6 +133,14 @@ describe.skipIf(!url)('the module runtime', () => {
    */
   async function purge(): Promise<void> {
     const forSubject = (sql: string) => pool.query(sql, [companyId]);
+    // Promoted facilities first: they point at claims, and seed 003 also owns
+    // rows for this company. `source_claim_id is not null` is what tells the
+    // two apart -- a seeded row has none.
+    await forSubject(`with gone as (
+      delete from ontology.facilities
+       where company_id = $1 and source_claim_id is not null
+      returning id)
+      delete from core.entities where id in (select id from gone)`);
     await forSubject(`delete from research.claim_status_events where claim_id in (
       select id from research.claims where subject_id = $1)`);
     await forSubject(`delete from research.verification_checks where verification_run_id in (
@@ -232,6 +280,72 @@ describe.skipIf(!url)('the module runtime', () => {
 
     // The LLM never writes a VERIFIED claim (invariant C.7, report G).
     expect(rows.every((row) => row.status !== 'VERIFIED')).toBe(true);
+  });
+
+  /**
+   * The phase after J.6: a claim becomes a row in the ontology, or it does not,
+   * and a rule decides which. Nothing here runs the model again -- promotion
+   * reads the output the run already stored.
+   */
+  it('promotes a proposed site and refuses one its claim cannot carry', async () => {
+    const result = await runResearch(pool, {
+      companyId,
+      recipe: CORE_RECIPE,
+      asOfDate: '2026-06-30',
+      transport: honest,
+      apiKey: 'test-key',
+    });
+
+    const promotion = await promoteFacilities(pool, result.runId);
+    expect(promotion.promoted).toBe(1);
+
+    const approved = promotion.decisions.find((decision) => decision.status === 'approved')!;
+    expect(approved.name).toBe(`Test Separation Plant ${run}`);
+    expect(approved.stageCode).toBe('separation');
+    expect(approved.facilityId).not.toBeNull();
+    expect(approved.sourceClaimId).not.toBeNull();
+
+    const refused = promotion.decisions.find((decision) => decision.status === 'rejected')!;
+    expect(refused.name).toBe(`Test Magnet Plant ${run}`);
+    expect(refused.reason).toContain('UNKNOWN');
+    expect(refused.facilityId).toBeNull();
+
+    // The row carries the claim, and the claim carries the quote. That chain is
+    // the whole point of promoting rather than copying.
+    const { rows } = await pool.query<{
+      name: string;
+      stage_code: string;
+      material_code: string | null;
+      status: string;
+      claim_status: string;
+      quote: string | null;
+    }>(
+      `select f.name, s.code as stage_code, m.code as material_code, f.status,
+              c.epistemic_status as claim_status, ce.quote_excerpt as quote
+         from ontology.facilities f
+         join ontology.supply_chain_stages s on s.id = f.stage_id
+         left join ontology.materials m on m.id = f.primary_material_id
+         join research.claims c on c.id = f.source_claim_id
+         left join research.claim_evidence ce on ce.claim_id = c.id
+        where f.id = $1`,
+      [approved.facilityId],
+    );
+    expect(rows[0]).toMatchObject({
+      name: `Test Separation Plant ${run}`,
+      stage_code: 'separation',
+      material_code: 'ndpr_oxide',
+      status: 'operating',
+      claim_status: 'DERIVED',
+    });
+    expect(rows[0]!.quote).toBeTruthy();
+
+    // Re-running is the normal case, not an error: the key is (company, name,
+    // stage), so the second pass lands on the row the first one wrote.
+    const again = await promoteFacilities(pool, result.runId);
+    expect(again.promoted).toBe(1);
+    expect(again.decisions.find((d) => d.status === 'approved')!.facilityId).toBe(
+      approved.facilityId,
+    );
   });
 
   it('returns the same run for the same snapshot instead of writing another', async () => {

@@ -60,6 +60,8 @@ describe.skipIf(!url)('web read models', () => {
     ['How does this company earn revenue', 'business_model'],
     ['Assess financial quality', 'financial_quality'],
     ['Which commodities does this company', 'commodity_exposure'],
+    ['What industry does this company operate in', 'industry_position'],
+    ['Which stages of its supply chain does this company occupy', 'supply_chain_position'],
     ['How is this company funded', 'capital_structure'],
     ['Propose these inputs', 'valuation_assumptions'],
   ];

@@ -540,13 +540,29 @@ export const MODULE_IMPLEMENTATIONS: readonly ModuleImpl[] = [
   bearCase,
 ];
 
-/** The cheap path: the six modules a run needs to reach a valuation. */
+/**
+ * The cheap path: what a run needs to reach a valuation, plus what it needs to
+ * place the company in the chain.
+ *
+ * `industry_position` is here because `supply_chain_position` requires it and
+ * buildDag refuses a recipe that omits a dependency, not because the core run
+ * wanted an industry read of its own. That makes this two model calls dearer
+ * per run than the word "cheap" suggests, and the same two dearer for the web
+ * trigger and `pnpm research`, which both run this recipe.
+ *
+ * What it buys is the only thing that fills ontology.facilities.
+ * `supply_chain_position` is what proposes a site, and promoteFacilities has
+ * nothing to promote without it. Until now that module was in DEEP_RECIPE
+ * alone, so the ordinary path could never put a company at a stage.
+ */
 const CORE_MODULE_CODES = [
   'entity_resolution',
   'company_profile',
   'business_model',
-  'financial_quality',
+  'industry_position',
   'commodity_exposure',
+  'supply_chain_position',
+  'financial_quality',
   'capital_structure',
   'valuation_assumptions',
 ];

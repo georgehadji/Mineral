@@ -70,7 +70,7 @@ describe.skipIf(!url)('the module runtime', () => {
   /**
    * The sites, proposed exactly once across the whole run.
    *
-   * This transport answers every module the same way, and six identical
+   * This transport answers every module the same way, and eight identical
    * proposals would be six duplicates that the policy is right to refuse in a
    * heap. Only the first module to ask gets them, which is what one module
    * naming a site looks like from the promoter's side.
@@ -237,7 +237,9 @@ describe.skipIf(!url)('the module runtime', () => {
 
     expect(result.status).toBe('completed');
     expect(result.reused).toBe(false);
-    // Six LLM modules ran; entity_resolution is deterministic and emits nothing.
+    // Eight LLM modules ran; entity_resolution is deterministic and emits
+    // nothing. industry_position and supply_chain_position joined CORE_RECIPE
+    // so the ordinary path can place a company in the chain.
     expect(result.modules.map((m) => m.code)).toEqual([
       'entity_resolution',
       'company_profile',
@@ -245,10 +247,12 @@ describe.skipIf(!url)('the module runtime', () => {
       'financial_quality',
       'capital_structure',
       'commodity_exposure',
+      'industry_position',
+      'supply_chain_position',
       'valuation_assumptions',
     ]);
     expect(result.modules.every((m) => m.status === 'completed')).toBe(true);
-    expect(result.claimCount).toBe(12);
+    expect(result.claimCount).toBe(16);
 
     const { rows } = await pool.query<{
       claim_key: string;
@@ -357,7 +361,7 @@ describe.skipIf(!url)('the module runtime', () => {
       apiKey: 'test-key',
     });
     expect(again.reused).toBe(true);
-    expect(again.claimCount).toBe(12);
+    expect(again.claimCount).toBe(16);
 
     const { rows } = await pool.query<{ count: string }>(
       `select count(*)::text as count from research.runs

@@ -1,6 +1,6 @@
 /**
- * Integration test. Needs a PostgreSQL database with the migrations and both
- * seeds applied, addressed by DATABASE_URL. Skipped without one.
+ * Integration test. Needs a PostgreSQL database with the migrations and all
+ * three seeds applied, addressed by DATABASE_URL. Skipped without one.
  *
  * This is the phase J.11 gate: the supply-chain page for NdPr. The chain has to
  * walk from the mine to the motor, a measured tonnage has to reach the stage it
@@ -12,7 +12,9 @@ import { randomUUID } from 'node:crypto';
 import { createPool, type Pool } from './client.ts';
 import {
   OntologyError,
+  facilitiesOf,
   latestConcentration,
+  operatorsOf,
   producersOf,
   recordConcentration,
   recordProduction,
@@ -277,6 +279,52 @@ describe.skipIf(!url)('the supply chain', () => {
 
   it('returns nothing for a material that does not exist', async () => {
     expect(await supplyChain(pool, 'unobtainium')).toBeNull();
+  });
+
+  /**
+   * Standing at a stage and being measured at one are different claims, and
+   * the chain has to be able to make the first without the second. Seed 003
+   * carries no quantity at all, so these read back from facilities alone.
+   */
+  it('names who stands at a stage', async () => {
+    const separators = await operatorsOf(pool, 'separation');
+    expect(separators.every((facility) => facility.stageCode === 'separation')).toBe(true);
+
+    const plants = separators.find((facility) => facility.name === 'Mountain Pass separation plants');
+    expect(plants?.commonName).toBe('MP Materials');
+    expect(plants?.status).toBe('operating');
+    expect(plants?.materialCode).toBe('ndpr_oxide');
+
+    const chain = await supplyChain(pool, 'ndpr_oxide');
+    const oxide = chain!.materials.find((material) => material.code === 'ndpr_oxide')!;
+    expect(oxide.operators.map((facility) => facility.name)).toContain(
+      'Mountain Pass separation plants',
+    );
+  });
+
+  it('places a site at its stage when the filing does not name its output', async () => {
+    const cheshire = (await operatorsOf(pool, 'metal')).find(
+      (facility) => facility.name === 'Cheshire metal plant',
+    );
+    expect(cheshire?.materialCode).toBeNull();
+
+    const chain = await supplyChain(pool, 'ndpr_metal');
+    const metal = chain!.materials.find((material) => material.code === 'ndpr_metal')!;
+    expect(metal.operators.map((facility) => facility.name)).toContain('Cheshire metal plant');
+  });
+
+  it('walks one company across every stage it occupies, in chain order', async () => {
+    const mp = (await operatorsOf(pool, 'mining')).find(
+      (facility) => facility.commonName === 'MP Materials',
+    )!;
+    const across = await facilitiesOf(pool, mp.companyId);
+    expect(across.map((facility) => facility.stageCode)).toEqual([
+      'mining',
+      'concentration',
+      'separation',
+      'metal',
+      'magnet',
+    ]);
   });
 
   it('refuses to measure a stage nobody has reported output for', async () => {

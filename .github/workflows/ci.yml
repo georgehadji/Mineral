@@ -57,15 +57,17 @@ jobs:
           done | $PSQL
       - name: run invariant tests
         run: $PSQL -f packages/db/tests/schema_v1_1.test.sql
-      - name: seed issuers and the supply-chain ontology
+      - name: seed issuers, the supply-chain ontology and the facilities
         run: |
           $PSQL -f packages/db/seeds/001-rare-earth-issuers.sql
           $PSQL -f packages/db/seeds/002-supply-chain-ontology.sql
+          $PSQL -f packages/db/seeds/003-facilities.sql
       - name: seeds are idempotent
         run: |
           before=$($PSQL -tAc 'select count(*) from core.entities')
           $PSQL -q -f packages/db/seeds/001-rare-earth-issuers.sql
           $PSQL -q -f packages/db/seeds/002-supply-chain-ontology.sql
+          $PSQL -q -f packages/db/seeds/003-facilities.sql
           after=$($PSQL -tAc 'select count(*) from core.entities')
           test "$before" = "$after"
       - uses: pnpm/action-setup@v4

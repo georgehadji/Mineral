@@ -60,6 +60,8 @@ Apply the migration, then the issuer seed:
 
 ```bash
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f packages/db/seeds/001-rare-earth-issuers.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f packages/db/seeds/002-supply-chain-ontology.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f packages/db/seeds/003-facilities.sql
 ```
 
 ```bash

@@ -36,7 +36,8 @@ export default async function SupplyChainPage({
       <p className="sub">
         {chain.materials.length} materials across {chain.stages.length} stages, connected by what
         supplies what. The chain is structure and is seeded; quantities are measurement and arrive
-        with a filing behind them.
+        with a filing behind them. An operator sits between the two: a named site that puts a
+        company at a stage without claiming a tonne.
       </p>
 
       <h2>The chain</h2>
@@ -47,6 +48,7 @@ export default async function SupplyChainPage({
             <th>Material</th>
             <th>Elements</th>
             <th>Supplies</th>
+            <th>Operators</th>
             <th className="num">Producers</th>
           </tr>
         </thead>
@@ -80,6 +82,21 @@ export default async function SupplyChainPage({
                       <span key={downstream}>
                         <Link href={`/supply-chain/${downstream}`}>{downstream}</Link>{' '}
                       </span>
+                    ))}
+              </td>
+              {/*
+                Standing here and being measured here are different claims.
+                An operator is a named site from a filing and carries no
+                quantity, so this column fills in where Producers cannot.
+              */}
+              <td className="sub">
+                {material.operators.length === 0
+                  ? '--'
+                  : material.operators.map((facility) => (
+                      <div key={facility.facilityId}>
+                        {facility.commonName ?? facility.legalName}
+                        {facility.status ? ` · ${facility.status}` : ''}
+                      </div>
                     ))}
               </td>
               <td className="num">{material.producers.length || '--'}</td>

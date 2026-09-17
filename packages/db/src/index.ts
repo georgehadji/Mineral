@@ -50,7 +50,9 @@ export {
 } from './decision-repository.ts';
 export {
   ensureProductionFactDefinitions,
+  facilitiesOf,
   latestConcentration,
+  operatorsOf,
   producersOf,
   recordConcentration,
   recordProduction,
@@ -59,6 +61,7 @@ export {
   OntologyError,
   PRODUCTION_FACT_CODES,
   type ConcentrationView,
+  type FacilityView,
   type MaterialView,
   type ProducerView,
   type ProductionFactCode,

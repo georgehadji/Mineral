@@ -72,6 +72,15 @@ try {
     if (material.elements.length > 0) {
       console.log(`  elements           ${material.elements.map((e) => e.symbol).join(', ')}`);
     }
+    // Who stands here at all, which is knowable far more often than how much
+    // they put out. A stage with operators and no producers is not empty; it
+    // is unmeasured, and those are different answers.
+    for (const operator of material.operators) {
+      console.log(
+        `  operates           ${(operator.commonName ?? operator.legalName).padEnd(22)} ` +
+          `${operator.name}${operator.status ? ` (${operator.status})` : ''}`,
+      );
+    }
     for (const producer of material.producers) {
       console.log(
         `  produces           ${(producer.commonName ?? producer.legalName).padEnd(22)} ` +

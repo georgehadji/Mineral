@@ -62,6 +62,29 @@ export interface ProducerView {
   sourceDocumentVersionId: UUID | null;
 }
 
+/**
+ * A company standing at a stage, by way of a named site. This is the join the
+ * chain was missing: `producers` says who was measured putting tonnes out,
+ * which needs a promoted fact, and most of the chain has none. An operator is
+ * the weaker and much more available statement -- this company has a plant
+ * here, and it is running or it is not -- and it carries no quantity at all.
+ */
+export interface FacilityView {
+  facilityId: UUID;
+  companyId: UUID;
+  legalName: string;
+  commonName: string | null;
+  name: string;
+  facilityType: string | null;
+  stageCode: string;
+  stageName: string;
+  stageSequence: number;
+  /** Null where the site's output is not a material this ontology models. */
+  materialCode: string | null;
+  countryCode: string | null;
+  status: string | null;
+}
+
 export interface ConcentrationView {
   calculationRunId: UUID;
   factCode: string;
@@ -83,6 +106,8 @@ export interface MaterialView {
   elements: { symbol: string; name: string }[];
   /** Material codes this one supplies, downstream. */
   supplies: string[];
+  /** Who has a plant at this point, measured or not. */
+  operators: FacilityView[];
   producers: ProducerView[];
   concentration: ConcentrationView | null;
 }
@@ -204,9 +229,101 @@ async function loadMaterials(pool: Pool, codes: string[]): Promise<MaterialView[
         : null,
     elements: row.elements ?? [],
     supplies: row.supplies ?? [],
+    operators: [],
     producers: [],
     concentration: null,
   }));
+}
+
+const FACILITY_SELECT = `
+  select f.id, f.company_id, c.legal_name, c.common_name, f.name, f.facility_type,
+         s.code as stage_code, s.name as stage_name, s.sequence_no as stage_sequence,
+         m.code as material_code, f.country_code, f.status
+    from ontology.facilities f
+    join core.companies c on c.id = f.company_id
+    join ontology.supply_chain_stages s on s.id = f.stage_id
+    left join ontology.materials m on m.id = f.primary_material_id`;
+
+interface FacilityRow {
+  id: string;
+  company_id: string;
+  legal_name: string;
+  common_name: string | null;
+  name: string;
+  facility_type: string | null;
+  stage_code: string;
+  stage_name: string;
+  stage_sequence: number;
+  material_code: string | null;
+  country_code: string | null;
+  status: string | null;
+}
+
+function toFacility(row: FacilityRow): FacilityView {
+  return {
+    facilityId: row.id,
+    companyId: row.company_id,
+    legalName: row.legal_name,
+    commonName: row.common_name,
+    name: row.name,
+    facilityType: row.facility_type,
+    stageCode: row.stage_code,
+    stageName: row.stage_name,
+    stageSequence: row.stage_sequence,
+    materialCode: row.material_code,
+    countryCode: row.country_code,
+    status: row.status,
+  };
+}
+
+/** Who has a plant at one stage. The direct form of "who does separation". */
+export async function operatorsOf(pool: Pool, stageCode: string): Promise<FacilityView[]> {
+  const { rows } = await pool.query<FacilityRow>(
+    `${FACILITY_SELECT} where s.code = $1 order by c.legal_name, f.name`,
+    [stageCode],
+  );
+  return rows.map(toFacility);
+}
+
+/** Where one company stands in the chain, earliest stage first. */
+export async function facilitiesOf(pool: Pool, companyId: UUID): Promise<FacilityView[]> {
+  const { rows } = await pool.query<FacilityRow>(
+    `${FACILITY_SELECT} where f.company_id = $1 order by s.sequence_no, f.name`,
+    [companyId],
+  );
+  return rows.map(toFacility);
+}
+
+/**
+ * Operators for a set of materials. A site is attached to the material it
+ * names, and failing that to every material of its stage: Cheshire is a metal
+ * plant whose output this ontology does not name, and dropping it from the
+ * chain entirely would be a worse answer than placing it at its stage.
+ */
+async function operatorsForMaterials(pool: Pool, codes: string[]): Promise<Map<string, FacilityView[]>> {
+  const { rows } = await pool.query<FacilityRow & { for_material: string }>(
+    `select target.code as for_material,
+            f.id, f.company_id, c.legal_name, c.common_name, f.name, f.facility_type,
+            s.code as stage_code, s.name as stage_name, s.sequence_no as stage_sequence,
+            m.code as material_code, f.country_code, f.status
+       from ontology.facilities f
+       join core.companies c on c.id = f.company_id
+       join ontology.supply_chain_stages s on s.id = f.stage_id
+       left join ontology.materials m on m.id = f.primary_material_id
+       join ontology.materials target
+         on target.id = f.primary_material_id
+         or (f.primary_material_id is null and target.stage_id = f.stage_id)
+      where target.code = any($1::text[])
+      order by c.legal_name, f.name`,
+    [codes],
+  );
+  const byMaterial = new Map<string, FacilityView[]>();
+  for (const row of rows) {
+    const list = byMaterial.get(row.for_material) ?? [];
+    list.push(toFacility(row));
+    byMaterial.set(row.for_material, list);
+  }
+  return byMaterial;
 }
 
 /**
@@ -311,7 +428,9 @@ export async function supplyChain(pool: Pool, materialCode: string): Promise<Sup
     ),
   ]);
 
+  const operators = await operatorsForMaterials(pool, codes);
   for (const material of materials) {
+    material.operators = operators.get(material.code) ?? [];
     material.producers = await producersOf(pool, material.code);
     material.concentration = await latestConcentration(pool, material.materialId);
   }

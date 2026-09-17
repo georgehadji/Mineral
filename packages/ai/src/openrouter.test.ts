@@ -31,6 +31,9 @@ describe('the openrouter adapter', () => {
     expect(body.tool_choice).toEqual({ type: 'function', function: { name: 'record_result' } });
     expect(body.tools[0].function.parameters).toEqual(call.schema);
     expect(body.temperature).toBe(0);
+    expect(JSON.parse(buildRequestBody({ ...call, temperature: null }))).not.toHaveProperty(
+      'temperature',
+    );
   });
 
   it('refuses an upstream endpoint that would drop the tool definition', () => {

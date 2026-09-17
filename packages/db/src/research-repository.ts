@@ -8,6 +8,7 @@ import {
   ModuleOutputError,
   ModuleOutputSchema,
   buildDag,
+  quoteIsContained,
   type ContextChunk,
   type ContextFact,
   type ModuleImpl,
@@ -275,9 +276,6 @@ export async function freezeSnapshot(
 
 // --- citation checking ------------------------------------------------------
 
-/** Filings wrap lines; a quote copied across a wrap is still the same quote. */
-const squeeze = (text: string): string => text.replace(/\s+/g, ' ').trim();
-
 /**
  * The check the phase gate names: every quote must appear in the chunk it
  * cites, and every citation must point inside the frozen snapshot. A module
@@ -307,7 +305,7 @@ function checkCitations(
         );
       }
       const quote = ref.quote ?? '';
-      if (!chunk.text.includes(quote) && !squeeze(chunk.text).includes(squeeze(quote))) {
+      if (!quoteIsContained(quote, chunk.text)) {
         throw new ModuleOutputError(
           `${code}: claim ${claim.claim_key} quotes text that is not in chunk ${chunk.chunkId}`,
         );

@@ -12,6 +12,24 @@ export function sha256(bytes: string | Uint8Array): string {
 const DROPPED_BLOCKS = /<(script|style|head)\b[^>]*>[\s\S]*?<\/\1>/gi;
 const BLOCK_TAGS = /<\/?(p|div|br|tr|table|section|article|h[1-6]|li|ul|ol)\b[^>]*>/gi;
 const REMAINING_TAGS = /<[^>]*>/g;
+
+/**
+ * SEC paginates the HTML, and every page break leaves two artefacts behind: the
+ * page number and the running "Table of Contents" link. Once the tags are gone
+ * those land in the middle of whatever sentence spanned the break. One Ramaco
+ * 10-K spliced "the 6 Table of Contents mine contains" into a sentence no
+ * reader ever saw that way, and a model that quoted the sentence faithfully was
+ * then told its quote was not in the document.
+ *
+ * Case-sensitive on purpose: the running link reads "Table of Contents", and
+ * the document's own heading reads "TABLE OF CONTENTS", which is real content.
+ * The page number is only removed when it sits directly above that link, so a
+ * lone number in a table stays where it is.
+ */
+const PAGE_FURNITURE = /^(?:\d{1,4}\n)?Table of Contents$/gm;
+
+/** Invisible, survives entity decoding, and breaks a quote for no visible reason. */
+const ZERO_WIDTH = /[​‌‍﻿]/g;
 const NAMED_ENTITIES: Record<string, string> = {
   amp: '&',
   lt: '<',
@@ -47,8 +65,14 @@ export function htmlToText(html: string): string {
       .replace(REMAINING_TAGS, ' '),
   )
     .replace(/\u00a0/g, ' ')
+    .replace(ZERO_WIDTH, '')
     .replace(/[ \t\r\f\v]+/g, ' ')
     .replace(/ *\n */g, '\n')
+    // Blank lines are collapsed first: a closing and an opening tag leave two
+    // newlines between the page number and the link, and the rule below wants
+    // them on consecutive lines.
+    .replace(/\n+/g, '\n')
+    .replace(PAGE_FURNITURE, '')
     .replace(/\n+/g, '\n')
     .trim();
 }

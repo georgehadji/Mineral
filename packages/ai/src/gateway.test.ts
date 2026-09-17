@@ -66,8 +66,11 @@ describe('the request hash', () => {
     expect(prepareCall({ ...request, schema: z.object({ revenue: z.number() }) }).requestHash).not.toBe(base);
   });
 
-  it('runs at temperature zero, so the same request has one answer', () => {
-    expect(prepareCall(request).temperature).toBe(0);
+  it('does not send temperature, because the routed models reject it', () => {
+    // It was 0 for determinism. The models deprecated the parameter and answer
+    // a request carrying it with a 400, so the knob is gone rather than moved.
+    expect(prepareCall(request).temperature).toBeNull();
+    expect(JSON.parse(prepareCall(request).body)).not.toHaveProperty('temperature');
   });
 });
 

@@ -44,6 +44,22 @@
       }
     },
     {
+      "id": "quote-copied-out-of-typeset-text",
+      "group": "quote_containment",
+      "expect": "passed",
+      "claim": {
+        "claimType": "business_fact",
+        "statement": "The company operates a single separation facility.",
+        "evidence": [
+          {
+            "quote": "the \"Company\" operates a single separation facility - see note 1",
+            "chunkText": "As of the date of this report the “Company” operates a single separation facility — see note 1.",
+            "sourceTier": 1
+          }
+        ]
+      }
+    },
+    {
       "id": "quote-paraphrased",
       "group": "quote_containment",
       "expect": "failed",

@@ -89,7 +89,8 @@ describe.skipIf(!url)('the model gateway', () => {
     expect(rows[0]).toMatchObject({
       status: 'completed',
       provider: 'openrouter',
-      temperature: '0.000',
+      // Not sent to the provider any more, so not recorded: see TEMPERATURE.
+      temperature: null,
       input_tokens: 10,
       output_tokens: 5,
       cost: '0.00010500',

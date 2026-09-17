@@ -66,8 +66,37 @@ const FINANCIAL_CLAIM_TYPES = new Set(['metric', 'financial', 'financial_fact', 
 /** Tier 4 and 5 are commentary and aggregators (docs/domain). */
 const WEAK_TIER = 4;
 
+/**
+ * Typography, folded to its plain form.
+ *
+ * A filing is typeset: it writes curly quotes, en dashes and non-breaking
+ * spaces. A model copying a sentence out of one faithfully returns the plain
+ * glyphs, because that is what its tokeniser produced. Comparing character for
+ * character then calls a correct quote a fabrication, which is the worst
+ * direction for this check to fail in: it teaches whoever reads the error that
+ * the gate cries wolf.
+ *
+ * This is not a licence to paraphrase. Every letter, digit, word and word
+ * boundary still has to match. What is folded is only the glyph a typesetter
+ * chose for a quote, a dash or a space.
+ */
+const TYPOGRAPHY: readonly (readonly [RegExp, string])[] = [
+  [/[‘’‚‛′]/g, "'"],
+  [/[“”„‟″]/g, '"'],
+  [/[‐-―−]/g, '-'],
+  [/…/g, '...'],
+  [/[     ]/g, ' '],
+  // Zero-width joiners and byte-order marks survive HTML extraction and are
+  // invisible in an error message, which makes them the worst possible reason
+  // for a citation to be rejected.
+  [/[​‌‍﻿]/g, ''],
+];
+
+const fold = (text: string): string =>
+  TYPOGRAPHY.reduce((out, [pattern, plain]) => out.replace(pattern, plain), text);
+
 /** Filings wrap lines; a quote copied across a wrap is still the same quote. */
-const squeeze = (text: string): string => text.replace(/\s+/g, ' ').trim();
+const squeeze = (text: string): string => fold(text).replace(/\s+/g, ' ').trim();
 
 export function quoteIsContained(quote: string, chunkText: string): boolean {
   return chunkText.includes(quote) || squeeze(chunkText).includes(squeeze(quote));

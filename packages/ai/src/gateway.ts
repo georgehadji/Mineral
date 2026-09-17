@@ -44,8 +44,16 @@ export function modelFor(task: ModelTask): string {
   return ROUTING[tier];
 }
 
-/** A thesis that changes because a sampler rolled differently is not a thesis. */
-export const TEMPERATURE = 0;
+/**
+ * A thesis that changes because a sampler rolled differently is not a thesis,
+ * which is why this was 0. It is now null, meaning the parameter is not sent
+ * at all: the models in ROUTING deprecated it and answer a request carrying it
+ * with "`temperature` is deprecated for this model", a 400 rather than a
+ * warning. The intent is unchanged and the knob is simply gone; determinism
+ * now rests on the provider default plus the model_cache, which replays a
+ * stored answer for an identical request rather than asking twice.
+ */
+export const TEMPERATURE: number | null = null;
 const DEFAULT_MAX_TOKENS = 4096;
 const DEFAULT_TOOL_NAME = 'record_result';
 
@@ -69,7 +77,8 @@ export interface PreparedRequest {
   provider: string;
   model: string;
   toolName: string;
-  temperature: number;
+  /** Null when the parameter is not sent at all; see TEMPERATURE. */
+  temperature: number | null;
   /** Exact bytes to send. */
   body: string;
   /** Cache key. Covers everything that can change the answer. */

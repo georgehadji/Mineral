@@ -33,6 +33,27 @@ describe('quote containment', () => {
     expect(quoteIsContained('The Company produced 45,455 metric tons', CHUNK)).toBe(true);
   });
 
+  /**
+   * From a real Ramaco 10-K: the filing is typeset with curly quotes and the
+   * model returned the plain ones. Every word matched and the run still died.
+   */
+  it('accepts a faithful quote whose typography was flattened', () => {
+    const typeset =
+      'Ramaco Resources, Inc. (the “Company,” “Ramaco”) is a Delaware' +
+      ' corporation formed in October 2016 — see Note‑1.';
+    const asTheModelReturnedIt =
+      'Ramaco Resources, Inc. (the "Company," "Ramaco") is a Delaware corporation formed in' +
+      ' October 2016 - see Note-1.';
+    expect(quoteIsContained(asTheModelReturnedIt, typeset)).toBe(true);
+  });
+
+  it('still rejects a paraphrase of the same sentence', () => {
+    // The guard on the rule above: folding a glyph must not fold a word.
+    const typeset = 'The Company “produced” 45,455 metric tons of oxide.';
+    expect(quoteIsContained('The Company made 45,455 metric tons of oxide.', typeset)).toBe(false);
+    expect(quoteIsContained('The Company "produced" 45,455 metric tons', typeset)).toBe(true);
+  });
+
   it('rejects a quote that is not in the chunk', () => {
     expect(quoteIsContained('The Company produced 90,000 metric tons', CHUNK)).toBe(false);
   });

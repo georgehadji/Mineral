@@ -23,7 +23,13 @@ export interface OpenRouterCall {
   toolName: string;
   schema: JsonSchema;
   maxTokens: number;
-  temperature: number;
+  /**
+   * Omitted from the body entirely when null. The newer Anthropic models reject
+   * the parameter outright -- "`temperature` is deprecated for this model" --
+   * and `require_parameters` below turns that into a 400 rather than a silent
+   * drop, so sending it to them fails the call.
+   */
+  temperature: number | null;
 }
 
 /**
@@ -37,7 +43,7 @@ export function buildRequestBody(call: OpenRouterCall): string {
   return JSON.stringify({
     model: call.model,
     max_tokens: call.maxTokens,
-    temperature: call.temperature,
+    ...(call.temperature === null ? {} : { temperature: call.temperature }),
     messages: [
       { role: 'system', content: call.system },
       { role: 'user', content: call.user },

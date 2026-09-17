@@ -139,6 +139,15 @@ export interface FacilityPolicyInput {
   stageKnown: boolean;
   /** Whether materialCode names a material that exists. True when it is null. */
   materialKnown: boolean;
+  /**
+   * How the ontology identifies the site, when the caller knows it. Two modules
+   * calling one mine "Elk Creek Complex" and "Elk Creek mining complex" write
+   * one row, so they have to be judged as one group or their disagreement
+   * becomes an overwrite nobody sees. The caller passes the same fold the table
+   * is keyed by; without one this falls back to the name, which is all a caller
+   * with no database in front of it has.
+   */
+  siteKey?: string;
   /** Whether countryCode names a country that exists. True when it is null. */
   countryKnown: boolean;
 }
@@ -164,11 +173,18 @@ const FACILITY_STATUS_SET: ReadonlySet<string> = new Set(FACILITY_STATUSES);
 export function applyFacilityPolicy(
   proposals: readonly FacilityPolicyInput[],
 ): FacilityDecision[] {
+  // Each proposal is judged alone first, and only the survivors argue. A
+  // proposal naming a material this ontology does not have is not going to
+  // become a row whatever its neighbours say, and letting it veto a sibling
+  // that would have stood is a refusal with nothing behind it.
+  const alone = proposals.map(judgeFacility);
+
   const bySite = new Map<string, FacilityPolicyInput[]>();
-  for (const proposal of proposals) {
-    const key = siteKey(proposal);
+  proposals.forEach((proposal, index) => {
+    if (alone[index]!.status !== 'approved') return;
+    const key = groupKey(proposal);
     bySite.set(key, [...(bySite.get(key) ?? []), proposal]);
-  }
+  });
 
   // A site named by several modules is the normal case, and it is agreement
   // rather than a clash: one run asks fifteen modules about one company, and
@@ -177,28 +193,57 @@ export function applyFacilityPolicy(
   // conflict worth refusing.
   const conflicted = new Set<string>();
   for (const [key, group] of bySite) {
-    if (new Set(group.map(describes)).size > 1) conflicted.add(key);
+    if (DESCRIPTIONS.some((read) => stated(group.map(read)).size > 1)) conflicted.add(key);
   }
 
-  return proposals.map((proposal) => ({
-    name: proposal.name,
-    stageCode: proposal.stageCode,
-    ...judgeFacility(proposal, conflicted),
-  }));
+  return proposals.map((proposal, index) => {
+    const verdict = alone[index]!;
+    // One row per site per stage. Modules repeating the same description of a
+    // site are corroborating it and all of them stand; modules describing it
+    // differently have not agreed on what it is, and picking one of their
+    // answers arbitrarily would hide that.
+    const clash = verdict.status === 'approved' && conflicted.has(groupKey(proposal));
+    return {
+      name: proposal.name,
+      stageCode: proposal.stageCode,
+      ...(clash
+        ? {
+            status: 'rejected' as const,
+            reason: `${proposal.name} is described differently by more than one module`,
+          }
+        : verdict),
+    };
+  });
 }
 
-function siteKey(proposal: FacilityPolicyInput): string {
-  return JSON.stringify([proposal.name.trim().toLowerCase(), proposal.stageCode]);
+function groupKey(proposal: FacilityPolicyInput): string {
+  return JSON.stringify([
+    proposal.siteKey ?? proposal.name.trim().toLowerCase(),
+    proposal.stageCode,
+  ]);
 }
 
-/** What a proposal says about the site, beyond which site it is. */
-function describes(proposal: FacilityPolicyInput): string {
-  return JSON.stringify([proposal.materialCode, proposal.countryCode, proposal.status]);
+/**
+ * What a proposal says about the site, beyond which site it is. Read one field
+ * at a time rather than as a tuple, because the fields are answered
+ * independently: a module that names the ore and a module that does not have
+ * not contradicted each other.
+ */
+const DESCRIPTIONS: readonly ((proposal: FacilityPolicyInput) => string | null)[] = [
+  (proposal) => proposal.materialCode,
+  (proposal) => proposal.countryCode,
+  // 'unknown' is the schema's way of declining to say, so it reads as silence
+  // here too rather than as a claim that the site's status is unknowable.
+  (proposal) => (proposal.status === 'unknown' ? null : proposal.status),
+];
+
+/** Silence is not disagreement: only answered fields can disagree. */
+function stated(values: readonly (string | null)[]): Set<string> {
+  return new Set(values.filter((value) => value !== null));
 }
 
 function judgeFacility(
   proposal: FacilityPolicyInput,
-  conflicted: ReadonlySet<string>,
 ): { status: 'approved' | 'rejected'; reason: string } {
   const reject = (reason: string) => ({ status: 'rejected' as const, reason });
 
@@ -220,14 +265,6 @@ function judgeFacility(
   }
   if (!FOUNDABLE_STATUSES.has(proposal.sourceClaimStatus)) {
     return reject(`its source claim is ${proposal.sourceClaimStatus}`);
-  }
-
-  // One row per site per stage. Modules repeating the same description of a
-  // site are corroborating it and all of them stand; modules describing it
-  // differently have not agreed on what it is, and picking one of their answers
-  // arbitrarily would hide that.
-  if (conflicted.has(siteKey(proposal))) {
-    return reject(`${proposal.name} is described differently by more than one module`);
   }
   return { status: 'approved', reason: 'named, staged, and founded on a standing claim' };
 }

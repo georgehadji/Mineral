@@ -64,8 +64,11 @@ begin
     end if;
   end if;
 
+  -- Matched on the same key the table is unique by, or a second run of this
+  -- seed would insert a row the constraint then refuses.
   select id into v_id from ontology.facilities
-   where company_id = v_company and name = p_name;
+   where company_id = v_company and site_key = ontology.facility_site_key(p_name)
+     and stage_id is not distinct from v_stage;
 
   if v_id is null then
     v_id := core.new_entity('facility');

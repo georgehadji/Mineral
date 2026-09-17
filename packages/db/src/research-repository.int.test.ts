@@ -344,13 +344,37 @@ describe.skipIf(!url)('the module runtime', () => {
     });
     expect(rows[0]!.quote).toBeTruthy();
 
-    // Re-running is the normal case, not an error: the key is (company, name,
-    // stage), so the second pass lands on the row the first one wrote.
+    // Re-running is the normal case, not an error: the key is (company,
+    // site_key, stage), so the second pass lands on the row the first wrote.
     const again = await promoteFacilities(pool, result.runId);
     expect(again.promoted).toBe(1);
     expect(again.decisions.find((d) => d.status === 'approved')!.facilityId).toBe(
       approved.facilityId,
     );
+
+    // And the case that produced twelve rows for eight sites on the first real
+    // run: another module quotes another sentence and calls the same plant by a
+    // slightly longer name. That is one plant, and the other name is an alias.
+    await pool.query(
+      `update research.module_runs
+          set output = jsonb_set(output, '{facilities,0,name}', to_jsonb($2::text))
+        where run_id = $1 and output -> 'facilities' -> 0 ->> 'name' = $3`,
+      [result.runId, `Test Separation Plant ${run} complex`, `Test Separation Plant ${run}`],
+    );
+    const renamed = await promoteFacilities(pool, result.runId);
+    expect(renamed.promoted).toBe(1);
+    expect(renamed.decisions.find((d) => d.status === 'approved')!.facilityId).toBe(
+      approved.facilityId,
+    );
+
+    const aliases = await pool.query<{ alias: string; has_claim: boolean }>(
+      `select alias, source_claim_id is not null as has_claim
+         from ontology.facility_aliases where facility_id = $1`,
+      [approved.facilityId],
+    );
+    expect(aliases.rows).toEqual([
+      { alias: `Test Separation Plant ${run} complex`, has_claim: true },
+    ]);
   });
 
   it('returns the same run for the same snapshot instead of writing another', async () => {

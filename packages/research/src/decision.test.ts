@@ -106,6 +106,40 @@ describe('facility policy', () => {
     expect(verdicts.every((verdict) => verdict.status === 'approved')).toBe(true);
   });
 
+  it('refuses two names for one site whose descriptions disagree', () => {
+    // The names are different and the site is not. Grouping by name would call
+    // these two sites that each agree with themselves, approve both, and let
+    // the second overwrite the first in a table keyed by the fold.
+    const verdicts = applyFacilityPolicy([
+      site({ name: 'Elk Creek Complex', siteKey: 'elk creek', status: 'operating' }),
+      site({ name: 'Elk Creek mining complex', siteKey: 'elk creek', status: 'closed' }),
+    ]);
+    expect(verdicts.every((verdict) => verdict.status === 'rejected')).toBe(true);
+    expect(verdicts[0]!.reason).toContain('described differently');
+  });
+
+  it('does not read silence as disagreement', () => {
+    // One module names the ore, the other does not. That is one site described
+    // once, not two descriptions that clash.
+    const verdicts = applyFacilityPolicy([
+      site({ materialCode: 'ndpr_oxide' }),
+      site({ materialCode: null }),
+    ]);
+    expect(verdicts.every((verdict) => verdict.status === 'approved')).toBe(true);
+  });
+
+  it('does not let a refused proposal veto the site it names', () => {
+    // Ramaco is a coal miner, so its filing proposes coal plants this ontology
+    // has no material for. They are refused on their own account; the sibling
+    // proposal that named no material still stands.
+    const verdicts = applyFacilityPolicy([
+      site({ name: 'Elk Creek Complex', siteKey: 'elk creek', materialCode: null }),
+      site({ name: 'Elk Creek Preparation Plant', siteKey: 'elk creek', materialCode: 'coal', materialKnown: false }),
+    ]);
+    expect(verdicts.map((verdict) => verdict.status)).toEqual(['approved', 'rejected']);
+    expect(verdicts[1]!.reason).toContain('not a material');
+  });
+
   it('keeps one site at two stages, which is a mine that also separates', () => {
     const verdicts = applyFacilityPolicy([
       site({ stageCode: 'mining', materialCode: 'rare_earth_ore' }),

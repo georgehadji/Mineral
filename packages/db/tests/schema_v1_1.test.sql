@@ -294,5 +294,36 @@ select pg_temp.assert(
     where n.id = '00000000-0000-0000-0000-0000000c0000') = 1,
   'provenance walk from thesis node to source tier should resolve');
 
+-- 20. facility site_key folds the descriptor tail, and only the tail
+select pg_temp.assert(
+  ontology.facility_site_key('Elk Creek mining complex') = ontology.facility_site_key('Elk Creek Complex'),
+  'two filings naming one mine should fold to one site_key');
+select pg_temp.assert(
+  ontology.facility_site_key('Knox Creek preparation plant') = 'knox creek',
+  'a two-word descriptor tail should fold whole');
+select pg_temp.assert(
+  ontology.facility_site_key('Mountain Pass mill and flotation plant') = 'mountain pass mill and flotation',
+  'the fold should take the tail and leave the middle');
+select pg_temp.assert(
+  ontology.facility_site_key('Mountain Pass open-pit mine')
+    <> ontology.facility_site_key('Mountain Pass mill and flotation plant'),
+  'two different sites at one place should stay two site_keys');
+select pg_temp.assert(
+  ontology.facility_site_key('  MOUNTAIN   pass/open-pit  MINE ')
+    = ontology.facility_site_key('Mountain Pass open-pit mine'),
+  'case, punctuation and spacing should not reach the key');
+select pg_temp.assert(
+  ontology.facility_site_key('The Mine') = 'the' and ontology.facility_site_key('Complex') = 'complex',
+  'a name that is all descriptor should keep itself rather than fold to nothing');
+
+-- the fold carries the unique constraint: one site, named twice, is one row
+insert into ontology.facilities(id, company_id, name)
+  select core.new_entity('facility'), company_id, 'Brook Complex' from f;
+select pg_temp.expect_error(
+  format('insert into ontology.facilities(id, company_id, name)
+          values (core.new_entity(''facility''), %L, ''Brook mining complex'')',
+         (select company_id from f)),
+  '23505');
+
 select 'ALL SCHEMA TESTS PASSED' as result;
 rollback;

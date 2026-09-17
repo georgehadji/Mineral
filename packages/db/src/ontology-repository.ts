@@ -360,6 +360,24 @@ async function knownCodes(pool: Pool): Promise<{
 }
 
 /**
+ * The fold the facilities table is keyed by, asked of the database rather than
+ * restated here. The policy has to group proposals the same way the table
+ * identifies rows: if it grouped by raw name, two modules disagreeing about one
+ * site under two names would both be approved and the second would overwrite
+ * the first, which is the exact disagreement the rule exists to refuse.
+ */
+async function foldNames(pool: Pool, names: readonly string[]): Promise<string[]> {
+  if (names.length === 0) return [];
+  const { rows } = await pool.query<{ key: string }>(
+    `select ontology.facility_site_key(name) as key
+       from unnest($1::text[]) with ordinality as t(name, ord)
+      order by ord`,
+    [names],
+  );
+  return rows.map((row) => row.key);
+}
+
+/**
  * Turns the sites a completed run proposed into rows in the ontology.
  *
  * The shape is the assumption path's, deliberately: a module proposed, a pure
@@ -368,8 +386,8 @@ async function knownCodes(pool: Pool): Promise<{
  * walked back to the claim that produced it and from there to the quote.
  *
  * Re-running this over the same run is safe and is the normal case: the key is
- * (company, name, stage), so a second pass updates the row it wrote the first
- * time rather than adding a twin. A proposal whose claim has since been
+ * (company, site_key, stage), so a second pass updates the row it wrote the
+ * first time rather than adding a twin. A proposal whose claim has since been
  * demoted to CONTRADICTED or STALE stops being approvable, which is the point
  * of founding the row on the claim rather than copying its words.
  */
@@ -388,10 +406,12 @@ export async function promoteFacilities(
   }
 
   const [stored, codes] = await Promise.all([loadFacilityProposals(pool, runId), knownCodes(pool)]);
+  const siteKeys = await foldNames(pool, stored.map((item) => item.proposal.name));
 
   const verdicts = applyFacilityPolicy(
-    stored.map((item) => ({
+    stored.map((item, index) => ({
       name: item.proposal.name,
+      siteKey: siteKeys[index],
       stageCode: item.proposal.stage_code,
       materialCode: item.proposal.material_code,
       countryCode: item.proposal.country_code,
@@ -444,9 +464,14 @@ async function upsertFacility(
   // entity id has to happen in the insert's own statement and would leave an
   // orphan in core.entities every time the conflict path won.
   return inTransaction(pool, async (client) => {
-    const existing = await client.query<{ id: string }>(
-      `select id from ontology.facilities
-        where company_id = $1 and name = $2 and stage_id is not distinct from $3`,
+    // By site_key, not by name: fifteen modules read one filing and call one
+    // mine "Elk Creek Complex" and "Elk Creek mining complex". The key folds
+    // the descriptor tail so both land on the row, and the name the second one
+    // used is kept as an alias rather than as a second mine.
+    const existing = await client.query<{ id: string; name: string }>(
+      `select id, name from ontology.facilities
+        where company_id = $1 and site_key = ontology.facility_site_key($2)
+          and stage_id is not distinct from $3`,
       [companyId, item.proposal.name, stageId],
     );
 
@@ -465,6 +490,14 @@ async function upsertFacility(
           where id = $1`,
         [found.id, ...values],
       );
+      if (found.name !== item.proposal.name) {
+        await client.query(
+          `insert into ontology.facility_aliases (facility_id, alias, source_claim_id)
+           values ($1, $2, $3)
+           on conflict (facility_id, alias) do nothing`,
+          [found.id, item.proposal.name, item.claimId],
+        );
+      }
       return found.id;
     }
 

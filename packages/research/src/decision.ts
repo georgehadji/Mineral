@@ -164,15 +164,26 @@ const FACILITY_STATUS_SET: ReadonlySet<string> = new Set(FACILITY_STATUSES);
 export function applyFacilityPolicy(
   proposals: readonly FacilityPolicyInput[],
 ): FacilityDecision[] {
-  const counts = new Map<string, number>();
+  const bySite = new Map<string, FacilityPolicyInput[]>();
   for (const proposal of proposals) {
     const key = siteKey(proposal);
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+    bySite.set(key, [...(bySite.get(key) ?? []), proposal]);
   }
+
+  // A site named by several modules is the normal case, and it is agreement
+  // rather than a clash: one run asks fifteen modules about one company, and
+  // Brook Mine turns up in the supply-chain read, the project pipeline and the
+  // catalysts. Only a group that cannot agree on what it is describing is a
+  // conflict worth refusing.
+  const conflicted = new Set<string>();
+  for (const [key, group] of bySite) {
+    if (new Set(group.map(describes)).size > 1) conflicted.add(key);
+  }
+
   return proposals.map((proposal) => ({
     name: proposal.name,
     stageCode: proposal.stageCode,
-    ...judgeFacility(proposal, counts),
+    ...judgeFacility(proposal, conflicted),
   }));
 }
 
@@ -180,9 +191,14 @@ function siteKey(proposal: FacilityPolicyInput): string {
   return JSON.stringify([proposal.name.trim().toLowerCase(), proposal.stageCode]);
 }
 
+/** What a proposal says about the site, beyond which site it is. */
+function describes(proposal: FacilityPolicyInput): string {
+  return JSON.stringify([proposal.materialCode, proposal.countryCode, proposal.status]);
+}
+
 function judgeFacility(
   proposal: FacilityPolicyInput,
-  counts: ReadonlyMap<string, number>,
+  conflicted: ReadonlySet<string>,
 ): { status: 'approved' | 'rejected'; reason: string } {
   const reject = (reason: string) => ({ status: 'rejected' as const, reason });
 
@@ -206,10 +222,12 @@ function judgeFacility(
     return reject(`its source claim is ${proposal.sourceClaimStatus}`);
   }
 
-  // One row per site per stage. Two proposals for the same site at the same
-  // stage disagree about something, and picking one arbitrarily hides that.
-  if ((counts.get(siteKey(proposal)) ?? 0) > 1) {
-    return reject(`${proposal.name} is proposed more than once at ${proposal.stageCode}`);
+  // One row per site per stage. Modules repeating the same description of a
+  // site are corroborating it and all of them stand; modules describing it
+  // differently have not agreed on what it is, and picking one of their answers
+  // arbitrarily would hide that.
+  if (conflicted.has(siteKey(proposal))) {
+    return reject(`${proposal.name} is described differently by more than one module`);
   }
   return { status: 'approved', reason: 'named, staged, and founded on a standing claim' };
 }

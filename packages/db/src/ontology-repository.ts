@@ -420,7 +420,12 @@ export async function promoteFacilities(
     runId,
     companyId: run.subject_id,
     decisions,
-    promoted: decisions.filter((decision) => decision.facilityId !== null).length,
+    // Distinct rows, not approvals: several modules corroborating one site
+    // upsert the same row, and counting them separately would report three
+    // facilities where the ontology gained one.
+    promoted: new Set(
+      decisions.map((decision) => decision.facilityId).filter((id) => id !== null),
+    ).size,
   };
 }
 

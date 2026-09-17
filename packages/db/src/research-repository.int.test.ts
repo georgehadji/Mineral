@@ -395,38 +395,45 @@ describe.skipIf(!url)('the module runtime', () => {
       ]);
     };
 
-    await expect(
-      runResearch(pool, {
-        companyId,
-        recipe: CORE_RECIPE,
-        asOfDate: '2026-06-29',
-        transport: fabricating,
-        apiKey: 'test-key',
-      }),
-    ).rejects.toThrow(/quotes text that is not in chunk/);
+    const result = await runResearch(pool, {
+      companyId,
+      recipe: CORE_RECIPE,
+      asOfDate: '2026-06-29',
+      transport: fabricating,
+      apiKey: 'test-key',
+    });
 
-    const { rows } = await pool.query<{ status: string; count: string }>(
-      `select r.status, count(c.id)::text as count
+    // The claim is refused, not the run. Every module here returns nothing but
+    // the fabrication, so every module completes having stored nothing.
+    expect(result.status).toBe('completed');
+    expect(result.claimCount).toBe(0);
+
+    const profile = result.modules.find((module) => module.code === 'company_profile')!;
+    expect(profile.status).toBe('completed');
+    expect(profile.rejected?.[0]?.reason).toMatch(/quotes text that is not in chunk/);
+
+    // The gate itself is unmoved: nothing miscited reaches the table.
+    const { rows } = await pool.query<{ count: string }>(
+      `select count(c.id)::text as count
          from research.runs r
          left join research.claims c on c.run_id = r.id
-        where r.subject_id = $1 and r.as_of_date = '2026-06-29'
-        group by r.status`,
+        where r.subject_id = $1 and r.as_of_date = '2026-06-29'`,
       [companyId],
     );
-    expect(rows[0]?.status).toBe('failed');
-    // entity_resolution emits nothing, so a failed run leaves no claims at all.
     expect(Number(rows[0]?.count ?? 0)).toBe(0);
 
-    const modules = await pool.query<{ code: string; status: string }>(
-      `select md.code, mr.status
+    // And the refusal is on the record rather than lost with the claim.
+    const stored = await pool.query<{ code: string; reason: string }>(
+      `select md.code, mr.output->'rejected'->0->>'reason' as reason
          from research.module_runs mr
          join research.module_definitions md on md.id = mr.module_definition_id
          join research.runs r on r.id = mr.run_id
         where r.subject_id = $1 and r.as_of_date = '2026-06-29'
-          and mr.status = 'failed'`,
+          and jsonb_array_length(coalesce(mr.output->'rejected', '[]'::jsonb)) > 0`,
       [companyId],
     );
-    expect(modules.rows.map((row) => row.code)).toContain('company_profile');
+    expect(stored.rows.map((row) => row.code)).toContain('company_profile');
+    expect(stored.rows[0]!.reason).toMatch(/quotes text that is not in chunk/);
   });
 
   it('refuses to research a company with no evidence at all', async () => {

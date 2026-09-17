@@ -62,6 +62,8 @@ export interface ModuleOutcome {
   status: 'completed' | 'failed';
   claimCount: number;
   assumptionCount: number;
+  /** Claims the citation gate refused, and why. Empty on a clean module. */
+  rejected?: RejectedClaim[];
   error?: string;
 }
 
@@ -276,42 +278,81 @@ export async function freezeSnapshot(
 
 // --- citation checking ------------------------------------------------------
 
+export interface RejectedClaim {
+  claimKey: string;
+  reason: string;
+}
+
 /**
  * The check the phase gate names: every quote must appear in the chunk it
  * cites, and every citation must point inside the frozen snapshot. A module
  * that cites something outside the snapshot has cited something the run never
  * read.
+ *
+ * A failing claim is dropped rather than thrown, and the rest of the module is
+ * kept. It used to take the whole run down, which turned one bad citation into
+ * the loss of fourteen good modules: against a real 10-K a model stitched two
+ * cells of a cover-page table into one quote, and a fifteen-module run ended
+ * there. The bar is unchanged -- nothing uncited or miscited is ever stored --
+ * but the blast radius is now the claim that earned it.
+ *
+ * Every rejection is returned, recorded on the module run and counted in the
+ * outcome, because a claim that vanishes with no trace is the failure mode this
+ * whole file exists to prevent.
  */
 function checkCitations(
   code: string,
   output: ModuleOutput,
   chunks: Map<string, ContextChunk>,
   factIds: Set<string>,
-): void {
-  for (const claim of output.claims) {
+): { kept: ModuleOutput; rejected: RejectedClaim[] } {
+  const rejected: RejectedClaim[] = [];
+
+  const faultIn = (claim: ModuleOutput['claims'][number]): string | null => {
     for (const ref of claim.evidence) {
       if (ref.fact_version_id) {
         if (!factIds.has(ref.fact_version_id)) {
-          throw new ModuleOutputError(
-            `${code}: claim ${claim.claim_key} cites fact version ${ref.fact_version_id}, which is not in the snapshot`,
-          );
+          return `cites fact version ${ref.fact_version_id}, which is not in the snapshot`;
         }
         continue;
       }
       const chunk = ref.chunk_id ? chunks.get(ref.chunk_id) : undefined;
-      if (!chunk) {
-        throw new ModuleOutputError(
-          `${code}: claim ${claim.claim_key} cites chunk ${ref.chunk_id}, which is not in the snapshot`,
-        );
-      }
-      const quote = ref.quote ?? '';
-      if (!quoteIsContained(quote, chunk.text)) {
-        throw new ModuleOutputError(
-          `${code}: claim ${claim.claim_key} quotes text that is not in chunk ${chunk.chunkId}`,
-        );
+      if (!chunk) return `cites chunk ${ref.chunk_id}, which is not in the snapshot`;
+      if (!quoteIsContained(ref.quote ?? '', chunk.text)) {
+        return `quotes text that is not in chunk ${chunk.chunkId}`;
       }
     }
-  }
+    return null;
+  };
+
+  const claims = output.claims.filter((claim) => {
+    const fault = faultIn(claim);
+    if (fault) rejected.push({ claimKey: claim.claim_key, reason: `${code}: ${claim.claim_key} ${fault}` });
+    return fault === null;
+  });
+
+  // What rested on a dropped claim goes with it. An assumption or a site whose
+  // finding was thrown away is exactly the orphan the source_claim_key exists
+  // to make impossible.
+  const surviving = new Set(claims.map((claim) => claim.claim_key));
+  const assumptions = output.assumptions.filter((proposal) => {
+    if (surviving.has(proposal.source_claim_key)) return true;
+    rejected.push({
+      claimKey: proposal.source_claim_key,
+      reason: `${code}: assumption ${proposal.code} dropped with the claim it rested on`,
+    });
+    return false;
+  });
+  const facilities = output.facilities.filter((facility) => {
+    if (surviving.has(facility.source_claim_key)) return true;
+    rejected.push({
+      claimKey: facility.source_claim_key,
+      reason: `${code}: facility ${facility.name} dropped with the claim it rested on`,
+    });
+    return false;
+  });
+
+  return { kept: { ...output, claims, assumptions, facilities }, rejected };
 }
 
 // --- persistence ------------------------------------------------------------
@@ -664,8 +705,13 @@ async function runModule(
       return result.value;
     };
 
-    const output = await impl.run(context, ask);
-    checkCitations(code, output, params.chunkIndex, params.factIds);
+    const raw = await impl.run(context, ask);
+    const { kept: output, rejected } = checkCitations(
+      code,
+      raw,
+      params.chunkIndex,
+      params.factIds,
+    );
 
     const author = decl.kind === 'deterministic' ? 'system' : 'llm';
     await inTransaction(pool, async (client) => {
@@ -688,7 +734,10 @@ async function runModule(
         `update research.module_runs
             set status = 'completed', completed_at = now(), output = $2::jsonb
           where id = $1`,
-        [moduleRunId, JSON.stringify(output)],
+        // Rejections ride along with the output rather than in `error`: the
+        // module did complete, and this is the record of what it was not
+        // allowed to say.
+        [moduleRunId, JSON.stringify({ ...output, rejected })],
       );
     });
 
@@ -699,6 +748,7 @@ async function runModule(
         status: 'completed',
         claimCount: output.claims.length,
         assumptionCount: output.assumptions.length,
+        rejected,
       },
       output,
     };

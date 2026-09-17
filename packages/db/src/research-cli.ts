@@ -42,7 +42,15 @@ try {
     console.log(`run ${result.runId} already covers this snapshot: ${result.claimCount} claims, nothing rewritten`);
   } else {
     for (const outcome of result.modules) {
-      console.log(`  ${outcome.status === 'completed' ? 'ok  ' : 'fail'} ${outcome.code}  ${outcome.claimCount} claims`);
+      const dropped = outcome.rejected?.length ?? 0;
+      console.log(
+        `  ${outcome.status === 'completed' ? 'ok  ' : 'fail'} ${outcome.code}  ` +
+          `${outcome.claimCount} claims${dropped > 0 ? `, ${dropped} refused` : ''}`,
+      );
+      // A refused claim is not a silent loss: say what was thrown away and why.
+      for (const refusal of outcome.rejected ?? []) {
+        console.log(`       refused  ${refusal.reason}`);
+      }
     }
     console.log(`\nrun ${result.runId}  ${result.claimCount} claims  snapshot ${result.snapshotHash.slice(0, 12)}`);
   }

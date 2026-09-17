@@ -37,6 +37,7 @@ export {
   ResearchRunError,
   type FrozenSnapshot,
   type ModuleOutcome,
+  type RejectedClaim,
   type RunResearchInput,
   type RunResearchResult,
   type Step,

@@ -92,10 +92,18 @@ describe('facility policy', () => {
     expect(siteVerdict(site({ materialCode: null }))).toMatchObject({ status: 'approved' });
   });
 
-  it('refuses both halves of a site proposed twice at one stage', () => {
+  it('refuses a site two modules describe differently', () => {
     const verdicts = applyFacilityPolicy([site({ status: 'operating' }), site({ status: 'closed' })]);
     expect(verdicts.every((verdict) => verdict.status === 'rejected')).toBe(true);
-    expect(verdicts[0]!.reason).toContain('more than once');
+    expect(verdicts[0]!.reason).toContain('described differently');
+  });
+
+  it('accepts a site several modules describe the same way', () => {
+    // The ordinary case: one run asks fifteen modules about one company, and
+    // the same mine turns up in three of the answers. That is corroboration,
+    // and refusing all three was the bug this replaced.
+    const verdicts = applyFacilityPolicy([site(), site(), site()]);
+    expect(verdicts.every((verdict) => verdict.status === 'approved')).toBe(true);
   });
 
   it('keeps one site at two stages, which is a mine that also separates', () => {

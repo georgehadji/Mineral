@@ -21,7 +21,7 @@ Evidence before prose. Deterministic calculations before LLM conclusions. Versio
 | `packages/ai/` | Model gateway: OpenRouter adapter, Zod to JSON Schema, tier routing |
 | `packages/monitoring/` | Deterministic drift rules: new sources, invalidated assumptions, valuation moves |
 | `packages/db/` | PostgreSQL schema, seeds, SQL invariant tests, SQL-first repositories, read models |
-| `services/analytics/` | Python deterministic calculations behind `POST /calc/{method}` |
+| `services/analytics/` | Python deterministic calculations behind `POST /calc/{method}`, including the concentration indices |
 | `infra/docker/` | Local PostgreSQL |
 
 ## Development
@@ -38,7 +38,7 @@ cd services/analytics && uv sync --extra dev && uv run pytest
 
 `pnpm check` runs the TypeScript typecheck and the Vitest suite. Database-backed
 tests are skipped unless `DATABASE_URL` is set, so the default run is hermetic.
-Verified locally: 172 hermetic tests, 227 with a database, and 63 Python tests.
+Verified locally: 177 hermetic tests, 240 with a database, and 84 Python tests.
 
 Configuration lives in `.env`, which Git ignores. Copy the example and fill
 in what you have:
@@ -197,6 +197,13 @@ twice for the same thing returns the first run rather than writing a second. A
 run against a subject with no ingested evidence is refused outright, because an
 empty snapshot produces confident UNKNOWNs that read like findings.
 
+`pnpm research` runs `CORE_RECIPE`, the cheap path: seven modules, enough to
+reach a valuation. `DEEP_RECIPE` adds industry position, supply-chain position,
+project pipeline, management, competitive landscape, risks, catalysts and the
+bear case, fifteen modules in all. The bear case runs last and argues against
+the proposed valuation inputs rather than the computed total, because an input
+is what the total is made of and is the more checkable thing to dispute.
+
 ## Verification
 
 A separate deterministic pass over what a run wrote.
@@ -298,6 +305,33 @@ passer-by must not be able to do is spend money on model calls. The trigger runs
 research, then verification, then the decision, and returns as soon as the run
 row exists so the status page has something to show.
 
+## Supply chain
+
+```bash
+pnpm chain ndpr_oxide
+```
+
+```bash
+pnpm chain ndpr_oxide --measure
+```
+
+A company is one position in a chain. Seed 002 lays the first one down: nine
+stages from mining to recycling, the materials that sit at each, the elements
+they carry, and `SUPPLIES` edges between them, so asking about separated oxide
+reaches both the mine and the motor.
+
+The seed carries no quantity. Stages and flows are definitions of the chain;
+who produces how much is measurement, and measurement arrives as a promoted
+fact with a filing under it. `recordProduction` is the entry point, and it
+demands a source document version rather than accepting a null one.
+
+`--measure` sends the measured quantities to the analytics engine and stores
+what comes back as a calculation run, with one `calculation_run_inputs` row per
+producer revision. The page at `/supply-chain/ndpr_oxide` reads the index back
+from that run; it never computes one (invariant C.9). A stage nobody has
+measured shows a gap, because a bottleneck is the easiest claim in this domain
+to assert and the hardest to support.
+
 ## Monitoring
 
 ```bash
@@ -354,4 +388,4 @@ Then run the migration and test with `psql -h localhost -p 55432 -U postgres -d 
 
 ## Implementation sequence
 
-See `docs/architecture/00-architecture-understanding.md` §J. Phases 0 to 10 are done. Next: phase 11, breadth.
+See `docs/architecture/00-architecture-understanding.md` §J. Phases 0 to 11 are done. Next: phase 12, evals.

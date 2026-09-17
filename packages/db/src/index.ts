@@ -49,6 +49,25 @@ export {
   type DecideResult,
 } from './decision-repository.ts';
 export {
+  ensureProductionFactDefinitions,
+  latestConcentration,
+  producersOf,
+  recordConcentration,
+  recordProduction,
+  stages,
+  supplyChain,
+  OntologyError,
+  PRODUCTION_FACT_CODES,
+  type ConcentrationView,
+  type MaterialView,
+  type ProducerView,
+  type ProductionFactCode,
+  type RecordConcentrationResult,
+  type RecordProductionInput,
+  type StageView,
+  type SupplyChainView,
+} from './ontology-repository.ts';
+export {
   alertRules,
   driftReport,
   ensureAlertRules,

@@ -255,9 +255,25 @@ export const CALC_METHOD_VALUES = [
   'nav',
   'sotp',
   'scenario',
+  // Report J.11. Not a valuation, but the same kind of thing: one invocation of
+  // the deterministic engine, stored with its inputs and its output. The check
+  // constraint on the column was widened to match in migration
+  // 20260918000000_concentration_method.sql.
+  'concentration',
 ] as const;
 
-const CalcInputValueSchema = z.union([z.number().finite(), z.array(z.number().finite()).min(1)]);
+/**
+ * An input as the engine echoes it back. Numbers and lists of numbers are what
+ * a formula takes; strings are labels that ride along so a stored run can say
+ * which producer each quantity belonged to, and they take no part in any
+ * arithmetic.
+ */
+const CalcInputValueSchema = z.union([
+  z.number().finite(),
+  z.array(z.number().finite()).min(1),
+  z.string(),
+  z.array(z.string()).min(1),
+]);
 
 export const CalcOutputSchema = z.object({
   code: z.string().min(1),

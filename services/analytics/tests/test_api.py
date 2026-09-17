@@ -70,3 +70,45 @@ def test_numbers_that_cannot_produce_a_result_are_a_422():
 def test_an_unexpected_body_field_is_rejected():
     response = client.post("/calc/dcf", json={**DCF_BODY, "subject_id": "MP"})
     assert response.status_code == 422
+
+
+CONCENTRATION_BODY = {
+    "inputs": {
+        "quantities": [6000.0, 3000.0, 1000.0],
+        "labels": ["MP Materials", "USA Rare Earth", "Energy Fuels"],
+    },
+    "currency": "XXX",
+}
+
+
+def test_concentration_accepts_string_labels_over_the_wire():
+    """Labels are strings, and the request model has to carry them unchanged.
+
+    They exist so a stored run says which producer each quantity belonged to,
+    so losing them at the boundary would leave an index nobody can read back.
+    """
+    response = client.post("/calc/concentration", json=CONCENTRATION_BODY)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["inputs"]["labels"] == ["MP Materials", "USA Rare Earth", "Energy Fuels"]
+    by_code = {output["code"]: output["value"] for output in body["outputs"]}
+    assert by_code["hhi"] == pytest.approx(0.46)
+    assert [row["label"] for row in body["detail"]["by_producer"]] == [
+        "MP Materials",
+        "USA Rare Earth",
+        "Energy Fuels",
+    ]
+
+
+def test_concentration_still_refuses_a_label_where_a_quantity_belongs():
+    """Widening the request type must not widen what a method will compute with.
+
+    The boundary now carries strings, so this reaches the registry rather than
+    being stopped by the request model, and the registry is where it is refused.
+    """
+    response = client.post(
+        "/calc/concentration",
+        json={"inputs": {"quantities": ["a lot", "a little"]}},
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"] == "quantities must contain only numbers"

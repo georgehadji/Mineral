@@ -49,16 +49,27 @@ export async function ensureFactDefinitions(
 }
 
 /**
- * The fact this observable belongs to, created once. Qualifiers stay empty so
- * the same period reported twice becomes two revisions of one fact rather than
- * two facts that quietly disagree. Selected before inserting because the
+ * The fact this observable belongs to, created once. Qualifiers default to
+ * empty so the same period reported twice becomes two revisions of one fact
+ * rather than two facts that quietly disagree; pass them only where two values
+ * really are about different things. Selected before inserting because the
  * uniqueness index covers a generated column, which `on conflict` cannot infer.
  */
+/**
+ * What distinguishes two facts that share an observable and a period. An empty
+ * object is the default and the common case; a qualifier separates values that
+ * are genuinely about different things, such as production of one material
+ * rather than another (report J.11).
+ */
+export interface FactQualifiers {
+  qualifiers?: Record<string, string> | null;
+}
+
 export async function upsertFact(
   client: PoolClient,
   entityId: UUID,
   definitionId: UUID,
-  period: FactPeriod,
+  period: FactPeriod & FactQualifiers,
 ): Promise<UUID> {
   const params = [
     entityId,
@@ -66,6 +77,7 @@ export async function upsertFact(
     period.periodStart ?? null,
     period.periodEnd ?? null,
     period.asOfDate ?? null,
+    JSON.stringify(period.qualifiers ?? {}),
   ];
   const found = await client.query<{ id: string }>(
     `select id from evidence.facts
@@ -73,7 +85,7 @@ export async function upsertFact(
         and period_start is not distinct from $3::date
         and period_end is not distinct from $4::date
         and as_of_date is not distinct from $5::date
-        and qualifiers = '{}'::jsonb`,
+        and qualifiers = $6::jsonb`,
     params,
   );
   const existing = found.rows[0]?.id;
@@ -82,7 +94,7 @@ export async function upsertFact(
   const { rows } = await client.query<{ id: string }>(
     `insert into evidence.facts
        (entity_type, entity_id, fact_definition_id, period_start, period_end, as_of_date, qualifiers)
-     values ('company', $1, $2, $3::date, $4::date, $5::date, '{}'::jsonb)
+     values ('company', $1, $2, $3::date, $4::date, $5::date, $6::jsonb)
      returning id`,
     params,
   );

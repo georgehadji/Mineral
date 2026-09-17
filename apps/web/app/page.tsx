@@ -52,6 +52,13 @@ export default async function Home() {
           ))}
         </tbody>
       </table>
+
+      <h2>Supply chains</h2>
+      <p className="sub">
+        A company is one position in a chain. <Link href="/supply-chain/ndpr_oxide">NdPr oxide</Link>{' '}
+        is the first one modelled: ore to concentrate to separated oxide to metal to alloy to magnet
+        to motor.
+      </p>
     </>
   );
 }

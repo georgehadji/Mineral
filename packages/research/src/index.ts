@@ -40,6 +40,7 @@ export {
 } from './runtime.ts';
 export {
   CORE_RECIPE,
+  DEEP_RECIPE,
   IMPLEMENTATIONS_BY_CODE,
   MODULE_IMPLEMENTATIONS,
 } from './implementations.ts';

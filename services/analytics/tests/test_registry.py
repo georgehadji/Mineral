@@ -44,6 +44,11 @@ SAMPLES = {
     "ev_ebitda": {"enterprise_value": 2830.0, "ebitda": 250.0},
     "ev_sales": {"enterprise_value": 2830.0, "revenue": 253.4},
     "fcf_yield": {"operating_cash_flow": 310.0, "capital_expenditure": 220.0, "market_cap": 3000.0},
+    "concentration": {
+        "quantities": [60.0, 30.0, 10.0],
+        "labels": ["First", "Second", "Third"],
+        "top_n": 2,
+    },
 }
 
 

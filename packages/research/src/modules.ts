@@ -33,7 +33,17 @@ export const MODULE_REGISTRY: readonly ModuleDecl[] = [
   { code: 'assumption_policy', version: '1.0.0', category: 'valuation', kind: 'deterministic', requires: ['valuation_assumptions'] },
   { code: 'valuation_calc', version: '1.0.0', category: 'valuation', kind: 'deterministic', requires: ['assumption_policy'] },
   { code: 'scenario_model', version: '1.0.0', category: 'valuation', kind: 'deterministic', requires: ['valuation_calc', 'project_pipeline', 'commodity_exposure'] },
-  { code: 'bear_case', version: '1.0.0', category: 'risk', kind: 'llm', requires: ['risks', 'valuation_calc', 'competitive_landscape'] },
+  // Rule change, recorded at J.11 (brief section 24). This read
+  // `requires: ['risks', 'valuation_calc', 'competitive_landscape']`. Problem:
+  // `valuation_calc` is not a DAG module in this implementation but a step in
+  // the decision layer, because it persists and a module may not (I.20), so a
+  // recipe naming bear_case could never satisfy its dependencies and the module
+  // could not run at all. Change: it depends on the proposed assumptions rather
+  // than on the computed valuation. Why: a bear case that attacks the discount
+  // rate and the growth rate is attacking what the valuation is made of, which
+  // is both more useful than disputing the output number and available before
+  // any engine has run.
+  { code: 'bear_case', version: '1.0.0', category: 'risk', kind: 'llm', requires: ['risks', 'competitive_landscape', 'valuation_assumptions'] },
   { code: 'contradiction_check', version: '1.0.0', category: 'verification', kind: 'deterministic', requires: ['company_profile', 'financial_quality', 'competitive_landscape', 'risks', 'catalysts', 'bear_case'] },
   { code: 'numerical_check', version: '1.0.0', category: 'verification', kind: 'deterministic', requires: ['financial_quality', 'valuation_calc', 'scenario_model'] },
   { code: 'source_check', version: '1.0.0', category: 'verification', kind: 'deterministic', requires: ['company_profile', 'financial_quality', 'competitive_landscape', 'risks', 'catalysts', 'bear_case'] },

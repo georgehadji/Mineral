@@ -13,7 +13,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import multiples, ratios
+from . import concentration, multiples, ratios
 from .dcf import dcf, project_cash_flows, reverse_dcf
 from .ratios import CalculationError
 
@@ -188,6 +188,63 @@ def _ev_sales(values: Mapping[str, Any]) -> tuple[list[Output], dict[str, Any]]:
     return [Output("ev_to_sales", "EV to sales", value, "x", inputs)], {}
 
 
+def _quantities(values: Mapping[str, Any], key: str) -> Sequence[float]:
+    value = values.get(key)
+    if not isinstance(value, (list, tuple)) or not value:
+        raise CalculationError(f"{key} must be a non-empty list of quantities")
+    return [float(q) for q in value] if all(
+        not isinstance(q, bool) and isinstance(q, (int, float)) for q in value
+    ) else _reject(key)
+
+
+def _reject(key: str) -> Sequence[float]:
+    raise CalculationError(f"{key} must contain only numbers")
+
+
+def _concentration(values: Mapping[str, Any]) -> tuple[list[Output], dict[str, Any]]:
+    """Concentration of one supply-chain stage, from measured quantities.
+
+    The labels are the caller's, carried through into the detail so a stored
+    run says who each share belonged to. They take no part in the arithmetic.
+    """
+    quantities = _quantities(values, "quantities")
+    top_n = _years(values, "top_n") if "top_n" in values else 4
+    sources = ("quantities",)
+
+    outputs = [
+        Output("hhi", "Herfindahl-Hirschman index", concentration.hhi(quantities), "ratio", sources),
+        Output(
+            "effective_producers",
+            "Effective producers",
+            concentration.effective_producers(quantities),
+            "count",
+            sources,
+        ),
+        Output("top_share", "Largest single share", concentration.top_share(quantities), "ratio", sources),
+        Output(
+            f"cr{top_n}",
+            f"Combined share of the largest {top_n}",
+            concentration.concentration_ratio(quantities, top_n),
+            "ratio",
+            sources,
+        ),
+    ]
+
+    labels = values.get("labels")
+    detail: dict[str, Any] = {
+        "shares": concentration.shares(quantities),
+        "producer_count": len(quantities),
+        "top_n": top_n,
+    }
+    if isinstance(labels, (list, tuple)) and len(labels) == len(quantities):
+        ranked = sorted(zip(labels, quantities), key=lambda pair: pair[1], reverse=True)
+        total = float(sum(quantities))
+        detail["by_producer"] = [
+            {"label": str(label), "quantity": float(q), "share": float(q) / total} for label, q in ranked
+        ]
+    return outputs, detail
+
+
 def _fcf_yield(values: Mapping[str, Any]) -> tuple[list[Output], dict[str, Any]]:
     flow_inputs = ("operating_cash_flow", "capital_expenditure")
     flow = ratios.free_cash_flow(_num(values, flow_inputs[0]), _num(values, flow_inputs[1]))
@@ -226,6 +283,7 @@ METHODS: dict[str, Method] = {
     "ev_ebitda": Method("multiples", ("enterprise_value", "ebitda"), (), _ev_ebitda),
     "ev_sales": Method("multiples", ("enterprise_value", "revenue"), (), _ev_sales),
     "fcf_yield": Method("ratios", ("operating_cash_flow", "capital_expenditure", "market_cap"), (), _fcf_yield),
+    "concentration": Method("concentration", ("quantities",), ("labels", "top_n"), _concentration),
 }
 
 

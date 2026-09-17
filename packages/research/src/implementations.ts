@@ -270,14 +270,275 @@ const valuationAssumptions: ModuleImpl = {
   },
 };
 
+/**
+ * The modules report J.11 calls breadth. Each one is a prompt and a shape, like
+ * the first six: the runtime does the citing, the validating and the writing,
+ * so a new module is a new question rather than new machinery.
+ *
+ * The registry already declared them and their dependencies; what was missing
+ * was the question each one asks. The deep recipe turns them on and the core
+ * recipe is left alone, because core is the cheap path the web trigger takes
+ * and fifteen model calls is not cheap.
+ */
+
+const industryPosition: ModuleImpl = {
+  code: 'industry_position',
+  prompt: {
+    version: '1.0.0',
+    system:
+      'You place a company within its industry: what the industry is, how it is structured, and ' +
+      'where in it this company sits.\n\n' +
+      CITATION_RULES,
+  },
+  run(context, ask) {
+    return askFor(
+      'industry_position',
+      ask,
+      'extraction',
+      industryPosition.prompt!.system,
+      `Subject: ${subjectLine(context)}\n\n` +
+        'What industry does this company operate in, how is that industry structured, and what ' +
+        'position does the company hold in it? Give scale, share and standing only where the ' +
+        'evidence states them. Five claims at most.\n\n' +
+        `What earlier modules found:\n${renderUpstream(context)}\n\n` +
+        `Evidence:\n${renderChunks(context)}\n\nFigures:\n${renderFacts(context)}`,
+    );
+  },
+};
+
+/**
+ * The module behind the supply-chain page. It asks for a stage from the named
+ * list because a stage the ontology does not know is a sentence rather than a
+ * position in a chain.
+ */
+const supplyChainPosition: ModuleImpl = {
+  code: 'supply_chain_position',
+  prompt: {
+    version: '1.0.0',
+    system:
+      'You locate a company in a physical supply chain: which stages it occupies, what it takes ' +
+      'in, what it puts out, and who it depends on either side.\n\n' +
+      CITATION_RULES +
+      '\nName a stage using one of: mining, concentration, separation, refining, metal, alloy, ' +
+      'magnet, motor, recycling. A company that plainly occupies none of them gets an UNKNOWN ' +
+      'claim rather than an invented stage.',
+  },
+  run(context, ask) {
+    return askFor(
+      'supply_chain_position',
+      ask,
+      'synthesis',
+      supplyChainPosition.prompt!.system,
+      `Subject: ${subjectLine(context)}\n\n` +
+        'Which stages of its supply chain does this company occupy, what does each stage consume ' +
+        'and produce, and where is it dependent on someone else? Name the stage in every ' +
+        'statement. Six claims at most.\n\n' +
+        `What earlier modules found:\n${renderUpstream(context)}\n\n` +
+        `Evidence:\n${renderChunks(context)}\n\nFigures:\n${renderFacts(context)}`,
+    );
+  },
+};
+
+const projectPipeline: ModuleImpl = {
+  code: 'project_pipeline',
+  prompt: {
+    version: '1.0.0',
+    system:
+      'You record what a company is building: projects, facilities, expansions, their stage and ' +
+      'their stated timing.\n\n' +
+      CITATION_RULES +
+      '\nA date the filing does not give is UNKNOWN. Do not turn "in the second half" into a ' +
+      'month, and do not read a target as a commitment.',
+  },
+  run(context, ask) {
+    return askFor(
+      'project_pipeline',
+      ask,
+      'extraction',
+      projectPipeline.prompt!.system,
+      `Subject: ${subjectLine(context)}\n\n` +
+        'What is this company building or commissioning? For each project or facility give its ' +
+        'name, what it will produce, its stage, and the timing the filing states. Six claims at ' +
+        'most.\n\n' +
+        `What earlier modules found:\n${renderUpstream(context)}\n\n` +
+        `Evidence:\n${renderChunks(context)}\n\nFigures:\n${renderFacts(context)}`,
+    );
+  },
+};
+
+const management: ModuleImpl = {
+  code: 'management',
+  prompt: {
+    version: '1.0.0',
+    system:
+      'You assess management and governance from the record: who runs the company, what they ' +
+      'said they would do, and what the filings show they did.\n\n' +
+      CITATION_RULES +
+      '\nJudge the record, not the person. An opinion about character that the filings do not ' +
+      'support is not a claim you may make here.',
+  },
+  run(context, ask) {
+    return askFor(
+      'management',
+      ask,
+      'synthesis',
+      management.prompt!.system,
+      `Subject: ${subjectLine(context)}\n\n` +
+        'Who leads this company, how are they incentivised, what have they promised, and what ' +
+        'has been delivered against it? Governance arrangements that would matter to an outside ' +
+        'shareholder count. Five claims at most.\n\n' +
+        `What earlier modules found:\n${renderUpstream(context)}\n\n` +
+        `Evidence:\n${renderChunks(context)}\n\nFigures:\n${renderFacts(context)}`,
+    );
+  },
+};
+
+const competitiveLandscape: ModuleImpl = {
+  code: 'competitive_landscape',
+  prompt: {
+    version: '1.0.0',
+    system:
+      'You identify who a company competes with and on what, from filings alone.\n\n' +
+      CITATION_RULES +
+      '\nName a competitor only where the evidence names it. "Chinese producers" is what the ' +
+      'filing says and is a legitimate claim; inventing a company to make it concrete is not.',
+  },
+  run(context, ask) {
+    return askFor(
+      'competitive_landscape',
+      ask,
+      'synthesis',
+      competitiveLandscape.prompt!.system,
+      `Subject: ${subjectLine(context)}\n\n` +
+        'Who competes with this company, on what basis, and what protects or exposes it? Cover ' +
+        'barriers to entry and substitution where the evidence speaks to them. Six claims at ' +
+        'most.\n\n' +
+        `What earlier modules found:\n${renderUpstream(context)}\n\n` +
+        `Evidence:\n${renderChunks(context)}\n\nFigures:\n${renderFacts(context)}`,
+    );
+  },
+};
+
+const risksModule: ModuleImpl = {
+  code: 'risks',
+  prompt: {
+    version: '1.0.0',
+    system:
+      'You state what could go wrong for this company, and how you would know it was ' +
+      'happening.\n\n' +
+      CITATION_RULES +
+      '\nA risk the filings disclose is evidenced. A risk you reason to from evidenced facts is ' +
+      'INFERRED and must say so. Do not rank risks by a probability the evidence does not give.',
+  },
+  run(context, ask) {
+    return askFor(
+      'risks',
+      ask,
+      'synthesis',
+      risksModule.prompt!.system,
+      `Subject: ${subjectLine(context)}\n\n` +
+        'What are the material risks to this company, and what observable event would show each ' +
+        'one materialising? Operational, financial, market, regulatory and geopolitical all ' +
+        'count. Seven claims at most.\n\n' +
+        `What earlier modules found:\n${renderUpstream(context)}\n\n` +
+        `Evidence:\n${renderChunks(context)}\n\nFigures:\n${renderFacts(context)}`,
+    );
+  },
+};
+
+const catalysts: ModuleImpl = {
+  code: 'catalysts',
+  prompt: {
+    version: '1.0.0',
+    system:
+      'You identify dated, checkable events that would change what this company is worth.\n\n' +
+      CITATION_RULES +
+      '\nA catalyst is an event, not a hope: it has something that happens and a time the ' +
+      'evidence states. Where the timing is not stated, give the event and mark the timing ' +
+      'UNKNOWN rather than guessing a quarter.',
+  },
+  run(context, ask) {
+    return askFor(
+      'catalysts',
+      ask,
+      'synthesis',
+      catalysts.prompt!.system,
+      `Subject: ${subjectLine(context)}\n\n` +
+        'What events ahead would change this company materially, when does the evidence say each ' +
+        'falls, and which direction would it move the case? Six claims at most.\n\n' +
+        `What earlier modules found:\n${renderUpstream(context)}\n\n` +
+        `Evidence:\n${renderChunks(context)}\n\nFigures:\n${renderFacts(context)}`,
+    );
+  },
+};
+
+/**
+ * The module report J.11 names by itself. It runs last in the DAG and argues
+ * against everything before it, including the numbers the valuation module has
+ * just proposed: those are what the valuation is made of, and disputing an
+ * input is worth more than disputing the total.
+ *
+ * It is a module like any other, so the same rules bind it. A bear case that
+ * cannot cite is a bear case nobody has to answer.
+ */
+const bearCase: ModuleImpl = {
+  code: 'bear_case',
+  prompt: {
+    version: '1.0.0',
+    system:
+      'You argue the case against this company. Everything below was written by modules trying ' +
+      'to describe it fairly; your job is to find where that description is weakest and say so ' +
+      'in the same evidenced form.\n\n' +
+      CITATION_RULES +
+      '\nAttack the proposed valuation inputs by name where the evidence lets you: a discount ' +
+      'rate, a growth rate or a terminal growth rate that the filings do not support is the ' +
+      'strongest bear point available and the most checkable.\n' +
+      'Do not manufacture a bear case. Where the evidence genuinely does not support one, say so ' +
+      'with an UNKNOWN claim. An argument built on nothing is worse than no argument.',
+  },
+  run(context, ask) {
+    return askFor(
+      'bear_case',
+      ask,
+      'synthesis',
+      bearCase.prompt!.system,
+      `Subject: ${subjectLine(context)}\n\n` +
+        'What is the case against owning this company, and what would have to be true for it to ' +
+        'hold? Attack the findings and the proposed valuation inputs below, not a company you ' +
+        'imagine. Six claims at most.\n\n' +
+        `What earlier modules found:\n${renderUpstream(context)}\n\n` +
+        `Evidence:\n${renderChunks(context)}\n\nFigures:\n${renderFacts(context)}`,
+    );
+  },
+};
+
 export const MODULE_IMPLEMENTATIONS: readonly ModuleImpl[] = [
   entityResolution,
   companyProfile,
   businessModel,
-  financialQuality,
+  industryPosition,
   commodityExposure,
+  supplyChainPosition,
+  projectPipeline,
+  financialQuality,
   capitalStructure,
+  management,
+  competitiveLandscape,
+  risksModule,
+  catalysts,
   valuationAssumptions,
+  bearCase,
+];
+
+/** The cheap path: the six modules a run needs to reach a valuation. */
+const CORE_MODULE_CODES = [
+  'entity_resolution',
+  'company_profile',
+  'business_model',
+  'financial_quality',
+  'commodity_exposure',
+  'capital_structure',
+  'valuation_assumptions',
 ];
 
 /**
@@ -289,6 +550,29 @@ export const CORE_RECIPE: Recipe = RecipeSchema.parse({
   version: '1.0.0',
   subject: 'company',
   depth: 'quick',
+  preconditions: ['evidence_ingested'],
+  modules: CORE_MODULE_CODES.map((code) => ({ code, version: '1.0.0' })),
+});
+
+/**
+ * The recipe `docs/spec/company-deep-research.yaml` describes, as far as it can
+ * be a recipe here. The spec lists the deterministic stages -- policy, the
+ * calculation, the scenario, the three checks, the synthesis -- as modules, and
+ * this repository runs every one of them as a step outside the DAG, because
+ * each of them persists and a module may not (I.20, recorded at J.8). What is
+ * left is fifteen modules: the fourteen that ask a model a question and return
+ * claims, plus the deterministic root they all hang off, which is what a recipe
+ * is for.
+ *
+ * `final_synthesis` stays out for the reason J.8 recorded: it writes thesis
+ * rows rather than claims. `bear_case` is in, after the registry change above
+ * moved it off `valuation_calc`.
+ */
+export const DEEP_RECIPE: Recipe = RecipeSchema.parse({
+  id: 'company-deep-research',
+  version: '1.0.0',
+  subject: 'company',
+  depth: 'standard',
   preconditions: ['evidence_ingested'],
   modules: MODULE_IMPLEMENTATIONS.map((impl) => ({ code: impl.code, version: '1.0.0' })),
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ModuleOutputSchema, validateOutput } from './runtime.ts';
-import { CORE_RECIPE, IMPLEMENTATIONS_BY_CODE } from './implementations.ts';
+import { CORE_RECIPE, DEEP_RECIPE, IMPLEMENTATIONS_BY_CODE } from './implementations.ts';
 import { buildDag } from './dag.ts';
 
 const claim = (over: Record<string, unknown> = {}) =>
@@ -80,5 +80,49 @@ describe('the core recipe', () => {
     const dag = buildDag(CORE_RECIPE);
     expect(dag.levels[0]).toEqual(['entity_resolution']);
     expect(dag.order).toHaveLength(CORE_RECIPE.modules.length);
+  });
+});
+
+describe('the deep recipe', () => {
+  it('has an implementation for every module it lists', () => {
+    for (const ref of DEEP_RECIPE.modules) {
+      expect(IMPLEMENTATIONS_BY_CODE.has(ref.code)).toBe(true);
+    }
+  });
+
+  it('carries every module the spec recipe names that asks a model a question', () => {
+    const codes = new Set(DEEP_RECIPE.modules.map((ref) => ref.code));
+    for (const code of [
+      'industry_position',
+      'supply_chain_position',
+      'project_pipeline',
+      'management',
+      'competitive_landscape',
+      'risks',
+      'catalysts',
+    ]) {
+      expect(codes.has(code), `${code} is missing from the deep recipe`).toBe(true);
+    }
+  });
+
+  it('builds a DAG that starts at resolution and ends after the landscape it depends on', () => {
+    const dag = buildDag(DEEP_RECIPE);
+    expect(dag.levels[0]).toEqual(['entity_resolution']);
+    expect(dag.order).toHaveLength(DEEP_RECIPE.modules.length);
+    expect(dag.order.indexOf('risks')).toBeGreaterThan(dag.order.indexOf('competitive_landscape'));
+    expect(dag.order.indexOf('catalysts')).toBeGreaterThan(dag.order.indexOf('project_pipeline'));
+  });
+
+  it('argues the bear case last, after the inputs it attacks exist', () => {
+    const dag = buildDag(DEEP_RECIPE);
+    expect(dag.order.at(-1)).toBe('bear_case');
+    expect(dag.order.indexOf('bear_case')).toBeGreaterThan(
+      dag.order.indexOf('valuation_assumptions'),
+    );
+  });
+
+  it('leaves the core recipe cheap', () => {
+    expect(CORE_RECIPE.modules.length).toBeLessThan(DEEP_RECIPE.modules.length);
+    expect(CORE_RECIPE.modules.map((ref) => ref.code)).not.toContain('risks');
   });
 });

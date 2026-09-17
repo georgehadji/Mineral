@@ -17,10 +17,17 @@ from .ratios import CalculationError
 from .registry import METHODS, UnknownMethod, calculate
 
 
+#: What one input may be. Numbers and lists of numbers are what a formula takes.
+#: Strings are labels that ride along so a stored run can say which producer
+#: each quantity belonged to (report J.11); no method computes with them, and a
+#: method that does not declare a string input still refuses it in the registry.
+CalcInput = float | str | list[float] | list[str]
+
+
 class CalcRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    inputs: dict[str, float | list[float]]
+    inputs: dict[str, CalcInput]
     #: Unit stamped on monetary outputs. The engine does no conversion, so the
     #: caller is responsible for every input already being in this currency.
     currency: str = Field(default="USD", min_length=3, max_length=3)
@@ -39,7 +46,7 @@ class CalcResponse(BaseModel):
     engine: str
     engine_version: str
     currency: str
-    inputs: dict[str, float | list[float]]
+    inputs: dict[str, CalcInput]
     outputs: list[CalcOutput]
     detail: dict[str, Any]
 

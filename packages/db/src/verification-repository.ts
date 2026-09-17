@@ -49,6 +49,7 @@ interface ClaimRow {
   text_content: string | null;
   source_tier: number | null;
   fact_value: string | null;
+  period_end: string | null;
 }
 
 /**
@@ -62,7 +63,10 @@ async function loadClaims(pool: Pool, runId: UUID): Promise<VerifiableClaim[]> {
             ce.chunk_id, ce.fact_version_id, ce.quote_excerpt,
             dc.text_content, s.source_tier,
             coalesce(fv.numeric_value::text, fv.text_value, fv.boolean_value::text,
-                     fv.date_value::text, fv.json_value::text) as fact_value
+                     fv.date_value::text, fv.json_value::text) as fact_value,
+            -- What the cited evidence is about: the cited fact's own period
+            -- first, then the publication date of the cited filing.
+            coalesce(f.period_end::text, f.as_of_date::text, d.published_at::text) as period_end
        from research.claims c
        left join research.claim_evidence ce on ce.claim_id = c.id
        left join evidence.document_chunks dc on dc.id = ce.chunk_id
@@ -70,6 +74,7 @@ async function loadClaims(pool: Pool, runId: UUID): Promise<VerifiableClaim[]> {
        left join evidence.documents d on d.id = dv.document_id
        left join evidence.sources s on s.id = d.source_id
        left join evidence.fact_versions fv on fv.id = ce.fact_version_id
+       left join evidence.facts f on f.id = fv.fact_id
       where c.run_id = $1
       order by c.created_at, ce.created_at`,
     [runId],
@@ -97,6 +102,7 @@ async function loadClaims(pool: Pool, runId: UUID): Promise<VerifiableClaim[]> {
       chunkText: row.text_content,
       sourceTier: row.source_tier,
       factValue: row.fact_value,
+      periodEnd: row.period_end,
     };
     claim.evidence.push(evidence);
   }

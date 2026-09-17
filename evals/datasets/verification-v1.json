@@ -1,0 +1,413 @@
+{
+  "dataset": "verification",
+  "version": "1.0.0",
+  "target": "packages/research/src/verification.ts",
+  "notes": [
+    "Labelled cases for the deterministic verification rules. Each case names one",
+    "rule and the verdict that rule should reach. Roughly half are clean claims, so",
+    "a rule that fires on everything scores as badly as a rule that never fires.",
+    "The text is written for this dataset. It is not extracted from any filing, and",
+    "no number in it is a statement about any real company."
+  ],
+  "minAccuracy": 1.0,
+  "cases": [
+    {
+      "id": "quote-copied-exactly",
+      "group": "quote_containment",
+      "expect": "passed",
+      "claim": {
+        "claimType": "business_fact",
+        "statement": "The company operates a single separation facility.",
+        "evidence": [
+          {
+            "quote": "the Company operates a single separation facility",
+            "chunkText": "As of the date of this report the Company operates a single separation facility at the site.",
+            "sourceTier": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "quote-copied-across-a-line-wrap",
+      "group": "quote_containment",
+      "expect": "passed",
+      "claim": {
+        "claimType": "business_fact",
+        "statement": "The company operates a single separation facility.",
+        "evidence": [
+          {
+            "quote": "the Company operates a single separation facility",
+            "chunkText": "As of the date of this report the Company\noperates a single   separation facility at the site.",
+            "sourceTier": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "quote-paraphrased",
+      "group": "quote_containment",
+      "expect": "failed",
+      "claim": {
+        "claimType": "business_fact",
+        "statement": "The company operates a single separation facility.",
+        "evidence": [
+          {
+            "quote": "the Company runs one separation plant",
+            "chunkText": "As of the date of this report the Company operates a single separation facility at the site.",
+            "sourceTier": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "quote-stitched-across-a-gap",
+      "group": "quote_containment",
+      "expect": "failed",
+      "claim": {
+        "claimType": "business_fact",
+        "statement": "The company operates a separation facility at the site.",
+        "evidence": [
+          {
+            "quote": "the Company operates a separation facility",
+            "chunkText": "As of the date of this report the Company operates a single separation facility at the site.",
+            "sourceTier": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "cited-chunk-missing",
+      "group": "quote_containment",
+      "expect": "failed",
+      "claim": {
+        "claimType": "business_fact",
+        "statement": "The company operates a single separation facility.",
+        "evidence": [
+          {
+            "quote": "the Company operates a single separation facility",
+            "chunkText": null,
+            "sourceTier": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "number-in-the-quote",
+      "group": "number_vs_fact",
+      "expect": "passed",
+      "claim": {
+        "claimType": "metric",
+        "statement": "Production reached 45,455 metric tons.",
+        "evidence": [
+          {
+            "quote": "produced 45,455 metric tons of rare earth oxide",
+            "chunkText": "The Company produced 45,455 metric tons of rare earth oxide in concentrate.",
+            "sourceTier": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "number-written-without-separators",
+      "group": "number_vs_fact",
+      "expect": "passed",
+      "claim": {
+        "claimType": "metric",
+        "statement": "Production reached 45455 metric tons.",
+        "evidence": [
+          {
+            "quote": "produced 45,455 metric tons of rare earth oxide",
+            "chunkText": "The Company produced 45,455 metric tons of rare earth oxide in concentrate.",
+            "sourceTier": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "number-from-a-cited-fact",
+      "group": "number_vs_fact",
+      "expect": "passed",
+      "claim": {
+        "claimType": "metric",
+        "statement": "Revenue was 253400000.",
+        "evidence": [
+          {
+            "factVersionId": "fact-1",
+            "factValue": "253400000"
+          }
+        ]
+      }
+    },
+    {
+      "id": "number-nowhere-in-the-evidence",
+      "group": "number_vs_fact",
+      "expect": "failed",
+      "claim": {
+        "claimType": "metric",
+        "statement": "Production reached 61,200 metric tons.",
+        "evidence": [
+          {
+            "quote": "produced 45,455 metric tons of rare earth oxide",
+            "chunkText": "The Company produced 45,455 metric tons of rare earth oxide in concentrate.",
+            "sourceTier": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "number-arithmetic-the-model-did-itself",
+      "group": "number_vs_fact",
+      "expect": "failed",
+      "claim": {
+        "claimType": "metric",
+        "statement": "The two sites produced 90,910 metric tons between them.",
+        "evidence": [
+          {
+            "quote": "each site produced 45,455 metric tons",
+            "chunkText": "In the period each site produced 45,455 metric tons of oxide.",
+            "sourceTier": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "year-in-the-quote",
+      "group": "date_consistency",
+      "expect": "passed",
+      "claim": {
+        "claimType": "metric",
+        "statement": "Production reached 45,455 metric tons in 2024.",
+        "evidence": [
+          {
+            "quote": "in 2024 the Company produced 45,455 metric tons",
+            "chunkText": "In 2024 the Company produced 45,455 metric tons of oxide.",
+            "sourceTier": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "year-carried-by-the-cited-period",
+      "group": "date_consistency",
+      "expect": "passed",
+      "claim": {
+        "claimType": "metric",
+        "statement": "Revenue grew over the 2024 financial year.",
+        "evidence": [
+          {
+            "quote": "revenue grew over the financial year",
+            "chunkText": "Revenue grew over the financial year on higher shipments.",
+            "sourceTier": 1,
+            "periodEnd": "2024-12-31"
+          }
+        ]
+      }
+    },
+    {
+      "id": "year-the-evidence-is-not-about",
+      "group": "date_consistency",
+      "expect": "failed",
+      "claim": {
+        "claimType": "metric",
+        "statement": "Production reached 45,455 metric tons in 2019.",
+        "evidence": [
+          {
+            "quote": "in 2024 the Company produced 45,455 metric tons",
+            "chunkText": "In 2024 the Company produced 45,455 metric tons of oxide.",
+            "sourceTier": 1,
+            "periodEnd": "2024-12-31"
+          }
+        ]
+      }
+    },
+    {
+      "id": "forward-dated-claim-on-past-evidence",
+      "group": "date_consistency",
+      "expect": "failed",
+      "claim": {
+        "claimType": "metric",
+        "statement": "The facility will produce 45,455 metric tons in 2031.",
+        "evidence": [
+          {
+            "quote": "in 2024 the Company produced 45,455 metric tons",
+            "chunkText": "In 2024 the Company produced 45,455 metric tons of oxide.",
+            "sourceTier": 1,
+            "periodEnd": "2024-12-31"
+          }
+        ]
+      }
+    },
+    {
+      "id": "statement-with-no-year",
+      "group": "date_consistency",
+      "expect": "skipped",
+      "claim": {
+        "claimType": "business_fact",
+        "statement": "The company operates a single separation facility.",
+        "evidence": [
+          {
+            "quote": "the Company operates a single separation facility",
+            "chunkText": "The Company operates a single separation facility at the site.",
+            "sourceTier": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "filing-backs-a-financial-claim",
+      "group": "source_tier",
+      "expect": "passed",
+      "claim": {
+        "claimType": "metric",
+        "statement": "Revenue grew over the period.",
+        "evidence": [
+          {
+            "quote": "revenue grew over the period",
+            "chunkText": "Revenue grew over the period on higher shipments.",
+            "sourceTier": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "commentary-backs-a-financial-claim",
+      "group": "source_tier",
+      "expect": "failed",
+      "claim": {
+        "claimType": "metric",
+        "statement": "Revenue grew over the period.",
+        "evidence": [
+          {
+            "quote": "revenue grew over the period",
+            "chunkText": "Revenue grew over the period on higher shipments.",
+            "sourceTier": 5
+          }
+        ]
+      }
+    },
+    {
+      "id": "commentary-backs-a-narrative-claim",
+      "group": "source_tier",
+      "expect": "failed",
+      "claim": {
+        "claimType": "business_fact",
+        "statement": "The sector is consolidating.",
+        "evidence": [
+          {
+            "quote": "the sector is consolidating",
+            "chunkText": "Analysts note the sector is consolidating.",
+            "sourceTier": 4
+          }
+        ]
+      }
+    },
+    {
+      "id": "promoted-fact-carries-its-own-provenance",
+      "group": "source_tier",
+      "expect": "passed",
+      "claim": {
+        "claimType": "metric",
+        "statement": "Revenue was 253400000.",
+        "evidence": [
+          {
+            "factVersionId": "fact-1",
+            "factValue": "253400000"
+          }
+        ]
+      }
+    },
+    {
+      "id": "one-answer-recorded-twice",
+      "group": "contradiction",
+      "expect": "passed",
+      "claims": [
+        {
+          "claimKey": "separation_capacity",
+          "claimType": "metric",
+          "statement": "Capacity is 6,000 tons.",
+          "evidence": [
+            {
+              "quote": "capacity is 6,000 tons",
+              "chunkText": "Nameplate capacity is 6,000 tons per year.",
+              "sourceTier": 1
+            }
+          ]
+        },
+        {
+          "claimKey": "separation_capacity",
+          "claimType": "metric",
+          "statement": "Capacity is 6,000 tons.",
+          "evidence": [
+            {
+              "quote": "capacity is 6,000 tons",
+              "chunkText": "Nameplate capacity is 6,000 tons per year.",
+              "sourceTier": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "two-answers-to-the-same-question",
+      "group": "contradiction",
+      "expect": "failed",
+      "claims": [
+        {
+          "claimKey": "separation_capacity",
+          "claimType": "metric",
+          "statement": "Capacity is 6,000 tons.",
+          "evidence": [
+            {
+              "quote": "capacity is 6,000 tons",
+              "chunkText": "Nameplate capacity is 6,000 tons per year.",
+              "sourceTier": 1
+            }
+          ]
+        },
+        {
+          "claimKey": "separation_capacity",
+          "claimType": "metric",
+          "statement": "Capacity is 3,000 tons.",
+          "evidence": [
+            {
+              "quote": "capacity is 3,000 tons",
+              "chunkText": "Operating capacity is 3,000 tons per year.",
+              "sourceTier": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "different-questions-do-not-contradict",
+      "group": "contradiction",
+      "expect": "skipped",
+      "claims": [
+        {
+          "claimKey": "separation_capacity",
+          "claimType": "metric",
+          "statement": "Capacity is 6,000 tons.",
+          "evidence": [
+            {
+              "quote": "capacity is 6,000 tons",
+              "chunkText": "Nameplate capacity is 6,000 tons per year.",
+              "sourceTier": 1
+            }
+          ]
+        },
+        {
+          "claimKey": "refining_capacity",
+          "claimType": "metric",
+          "statement": "Capacity is 3,000 tons.",
+          "evidence": [
+            {
+              "quote": "capacity is 3,000 tons",
+              "chunkText": "Refining capacity is 3,000 tons per year.",
+              "sourceTier": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

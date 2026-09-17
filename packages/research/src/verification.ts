@@ -34,6 +34,12 @@ export interface VerifiableEvidence {
   sourceTier: number | null;
   /** Value of the cited fact version, as stored. */
   factValue: string | null;
+  /**
+   * When the cited evidence is about: the end of a cited fact's period, or the
+   * publication date of the cited document. A quote rarely repeats the year of
+   * the statement it supports, and the row it came from usually knows it.
+   */
+  periodEnd: string | null;
 }
 
 export interface VerifiableClaim {
@@ -128,6 +134,53 @@ function checkNumbers(claim: VerifiableClaim): CheckResult {
   };
 }
 
+/** Four digits in a range no metric of this domain occupies. */
+function yearsIn(text: string): string[] {
+  const found = text.match(/\b(19|20)\d{2}\b/g) ?? [];
+  return [...new Set(found)];
+}
+
+/**
+ * Temporal correctness. A statement that names a year has attributed itself to
+ * a period, and the evidence has to be about that period. This is the other
+ * half of the number rule, which skips four-digit years precisely because they
+ * are usually stated in a sentence without appearing in the quoted span; the
+ * years it drops are picked up here, against the dates the cited rows carry as
+ * well as their text.
+ *
+ * Warning rather than error, and that is not timidity. A filing says "the year
+ * ended December 31, 2025" where a claim says "in fiscal 2025", and both are
+ * right; the rule cannot tell that case from a misattributed one, so it reports
+ * rather than demotes. The eval dataset is what measures how often it is right.
+ */
+function checkDates(claim: VerifiableClaim): CheckResult {
+  const stated = yearsIn(claim.statement);
+  if (stated.length === 0) {
+    return { type: 'date_consistency', status: 'skipped', severity: 'info', claimId: claim.claimId,
+      message: 'the statement names no year', evidence: {} };
+  }
+
+  const cited = new Set<string>();
+  for (const ref of claim.evidence) {
+    for (const year of yearsIn(ref.quote ?? '')) cited.add(year);
+    for (const year of yearsIn(ref.factValue ?? '')) cited.add(year);
+    for (const year of yearsIn(ref.periodEnd ?? '')) cited.add(year);
+  }
+
+  const missing = stated.filter((year) => !cited.has(year));
+  if (missing.length === 0) {
+    return pass('date_consistency', claim.claimId, 'every year in the statement is in the evidence');
+  }
+  return {
+    type: 'date_consistency',
+    status: 'failed',
+    severity: 'warning',
+    claimId: claim.claimId,
+    message: `statement is about ${missing.join(', ')}, which the cited evidence is not`,
+    evidence: { missing, cited: [...cited] },
+  };
+}
+
 function checkTier(claim: VerifiableClaim): CheckResult {
   const tiers = claim.evidence.map((ref) => ref.sourceTier).filter((tier): tier is number => tier !== null);
   const facts = claim.evidence.filter((ref) => ref.factVersionId !== null).length;
@@ -203,7 +256,22 @@ function checkContradictions(claims: VerifiableClaim[]): CheckResult[] {
   const results: CheckResult[] = [];
   for (const [key, group] of byKey) {
     const statements = new Set(group.map((claim) => claim.statement.trim()));
-    if (group.length < 2 || statements.size < 2) continue;
+
+    // A verdict for every claim, including the clean ones. Emitting a row only
+    // on failure would leave "checked, nothing disagreed" and "this rule never
+    // ran" looking identical in research.verification_checks, and a stored
+    // check is the evidence that the check happened.
+    if (group.length < 2) {
+      results.push({ type: 'contradiction', status: 'skipped', severity: 'info',
+        claimId: group[0]!.claimId, message: `nothing else answers ${key}`, evidence: { claimKey: key } });
+      continue;
+    }
+    if (statements.size < 2) {
+      for (const claim of group) {
+        results.push(pass('contradiction', claim.claimId, `${group.length} claims agree on ${key}`));
+      }
+      continue;
+    }
     for (const claim of group) {
       results.push({
         type: 'contradiction',
@@ -230,6 +298,7 @@ export function verifyClaims(claims: VerifiableClaim[]): VerificationVerdict {
   for (const claim of claims) {
     checks.push(...checkQuotes(claim));
     checks.push(checkNumbers(claim));
+    checks.push(checkDates(claim));
     checks.push(checkTier(claim));
   }
   checks.push(...checkContradictions(claims));

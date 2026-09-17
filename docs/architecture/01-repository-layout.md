@@ -41,11 +41,14 @@ mineral/
 │   ├── spec/        # frozen inputs
 │   ├── architecture/
 │   └── domain/      # time axes, epistemic status, source tiers
+├── evals/           # labelled datasets and the scorer that gates the deterministic layer
 ├── tests/           # repo-level rules that belong to no single package
 └── .github/workflows/
 ```
 
-Planned, created when first used: `packages/{ontology, config, ui}`, `evals/`.
+Planned, created when first used: `packages/{ontology, config, ui}`.
+`evals/` arrived at J.12, as one package rather than a directory of them, which is
+why `tests/dependency-direction.test.ts` scans both shapes.
 `packages/monitoring` arrived at J.10, under rule 2: the alert tables existed from
 schema v1.1, but nothing evaluated them until there was a thesis to drift from.
 The spec called the ingestion package `ingestion`; it landed as `ingest` to match the verb used everywhere else (`pnpm ingest`).
@@ -59,7 +62,7 @@ for the worker it was once going to host.
 ## Dependency direction
 
 ```text
-apps/web
+apps/web · evals
    ↓
 research · ingest · ai · monitoring
    ↓

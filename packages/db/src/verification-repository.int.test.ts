@@ -291,9 +291,19 @@ describe.skipIf(!url)('verification', () => {
     );
 
     const result = await verifyRun(pool, runId);
-    const contradictions = result.checks.filter((check) => check.type === 'contradiction');
-    expect(contradictions.map((check) => check.claimId).sort()).toEqual([first, second].sort());
+    // Every claim now carries a contradiction check, so the flag is the failed
+    // ones: a claim nobody else answers is checked and skipped, and claims that
+    // agree are checked and passed.
+    const flagged = result.checks.filter(
+      (check) => check.type === 'contradiction' && check.status === 'failed',
+    );
+    expect(flagged.map((check) => check.claimId).sort()).toEqual([first, second].sort());
     expect(result.contradicted).toEqual(expect.arrayContaining([first, second]));
+
+    const others = result.checks.filter(
+      (check) => check.type === 'contradiction' && check.status !== 'failed',
+    );
+    expect(others.length).toBeGreaterThan(0);
   });
 
   it('records each pass separately, so the history of checks is kept', async () => {

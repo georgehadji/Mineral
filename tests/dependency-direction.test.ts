@@ -23,7 +23,7 @@ const RINGS: string[][] = [
   ['@mineral/domain'],
   ['@mineral/events', '@mineral/schemas'],
   ['@mineral/db', '@mineral/identity', '@mineral/ingest', '@mineral/ai', '@mineral/research', '@mineral/monitoring'],
-  ['@mineral/web'],
+  ['@mineral/web', '@mineral/evals'],
 ];
 
 const ringOf = new Map<string, number>();
@@ -31,25 +31,31 @@ RINGS.forEach((ring, index) => ring.forEach((name) => ringOf.set(name, index)));
 
 function manifests(): { name: string; deps: string[] }[] {
   const found: { name: string; deps: string[] }[] = [];
-  for (const group of ['packages', 'apps']) {
-    const dir = join(root, group);
-    if (!existsSync(dir)) continue;
-    for (const entry of readdirSync(dir)) {
-      const file = join(dir, entry, 'package.json');
-      if (!existsSync(file)) continue;
-      const parsed = JSON.parse(readFileSync(file, 'utf8')) as {
-        name: string;
-        dependencies?: Record<string, string>;
-        devDependencies?: Record<string, string>;
-      };
-      found.push({
-        name: parsed.name,
-        deps: [
-          ...Object.keys(parsed.dependencies ?? {}),
-          ...Object.keys(parsed.devDependencies ?? {}),
-        ].filter((dep) => dep.startsWith('@mineral/')),
-      });
-    }
+  // Directories holding many packages, then directories that are one package.
+  // Both shapes appear in pnpm-workspace.yaml and both have to be checked.
+  const directories = [
+    ...['packages', 'apps'].flatMap((group) => {
+      const dir = join(root, group);
+      return existsSync(dir) ? readdirSync(dir).map((entry) => join(dir, entry)) : [];
+    }),
+    join(root, 'evals'),
+  ];
+
+  for (const directory of directories) {
+    const file = join(directory, 'package.json');
+    if (!existsSync(file)) continue;
+    const parsed = JSON.parse(readFileSync(file, 'utf8')) as {
+      name: string;
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    found.push({
+      name: parsed.name,
+      deps: [
+        ...Object.keys(parsed.dependencies ?? {}),
+        ...Object.keys(parsed.devDependencies ?? {}),
+      ].filter((dep) => dep.startsWith('@mineral/')),
+    });
   }
   return found;
 }

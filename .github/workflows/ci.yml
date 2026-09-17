@@ -57,12 +57,15 @@ jobs:
           done | $PSQL
       - name: run invariant tests
         run: $PSQL -f packages/db/tests/schema_v1_1.test.sql
-      - name: seed issuers
-        run: $PSQL -f packages/db/seeds/001-rare-earth-issuers.sql
-      - name: seed is idempotent
+      - name: seed issuers and the supply-chain ontology
+        run: |
+          $PSQL -f packages/db/seeds/001-rare-earth-issuers.sql
+          $PSQL -f packages/db/seeds/002-supply-chain-ontology.sql
+      - name: seeds are idempotent
         run: |
           before=$($PSQL -tAc 'select count(*) from core.entities')
           $PSQL -q -f packages/db/seeds/001-rare-earth-issuers.sql
+          $PSQL -q -f packages/db/seeds/002-supply-chain-ontology.sql
           after=$($PSQL -tAc 'select count(*) from core.entities')
           test "$before" = "$after"
       - uses: pnpm/action-setup@v4
@@ -77,3 +80,20 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:mineral@localhost:5432/mineral
         run: pnpm test
+
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # No database and no model key here on purpose. An eval that could only
+      # run where those exist would not run on a pull request, and this is the
+      # gate on module version bumps: a change that lowers either score fails.
+      - run: pnpm eval

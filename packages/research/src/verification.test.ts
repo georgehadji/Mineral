@@ -19,6 +19,7 @@ const claim = (over: Partial<VerifiableClaim> = {}): VerifiableClaim => ({
       chunkText: CHUNK,
       sourceTier: 1,
       factValue: null,
+      periodEnd: '2024-12-31',
     },
   ],
   ...over,
@@ -92,6 +93,7 @@ describe('numbers against evidence', () => {
           chunkText: null,
           sourceTier: null,
           factValue: '253400000',
+          periodEnd: null,
         },
       ],
     });
@@ -123,7 +125,7 @@ describe('source tier', () => {
       statement: 'Revenue was reported for the year.',
       evidence: [
         { chunkId: null, factVersionId: '44444444-4444-4444-4444-444444444444', quote: null,
-          chunkText: null, sourceTier: null, factValue: '1' },
+          chunkText: null, sourceTier: null, factValue: '1', periodEnd: null },
       ],
     });
     expect(find([fromFact], 'source_tier')[0]).toMatchObject({ status: 'passed' });
@@ -141,9 +143,14 @@ describe('contradiction on a shared claim key', () => {
     expect(verdict.overall).toBe('failed');
   });
 
-  it('does not flag the same answer recorded twice', () => {
+  it('records agreement rather than silence when the same answer is recorded twice', () => {
     const verdict = verifyClaims([claim(), other({})]);
-    expect(verdict.checks.filter((check) => check.type === 'contradiction')).toHaveLength(0);
+    const contradictions = verdict.checks.filter((check) => check.type === 'contradiction');
+    // A row per claim, passed. Emitting nothing would make "checked, nothing
+    // disagreed" and "this rule never ran" identical in the stored checks.
+    expect(contradictions).toHaveLength(2);
+    expect(contradictions.every((check) => check.status === 'passed')).toBe(true);
+    expect(verdict.overall).toBe('passed');
   });
 
   it('does not flag different keys that happen to disagree', () => {
@@ -152,7 +159,67 @@ describe('contradiction on a shared claim key', () => {
       other({ claimKey: 'revenue_concentration', statement: 'The company produced nothing.',
         evidence: [{ ...claim().evidence[0]! }] }),
     ]);
-    expect(verdict.checks.filter((check) => check.type === 'contradiction')).toHaveLength(0);
+    const contradictions = verdict.checks.filter((check) => check.type === 'contradiction');
+    expect(contradictions.every((check) => check.status === 'skipped')).toBe(true);
+    expect(verdict.overall).not.toBe('failed');
+  });
+
+  it('says a claim nobody else answers was checked and skipped', () => {
+    const contradictions = find([claim()], 'contradiction');
+    expect(contradictions).toHaveLength(1);
+    expect(contradictions[0]).toMatchObject({ status: 'skipped' });
+  });
+});
+
+describe('temporal correctness', () => {
+  it('accepts a year the quote states', () => {
+    expect(find([claim()], 'date_consistency')[0]).toMatchObject({ status: 'passed' });
+  });
+
+  it('accepts a year carried by the cited period rather than by the quote', () => {
+    const dated = claim({
+      statement: 'Production rose over the 2024 financial year.',
+      evidence: [
+        {
+          chunkId: '22222222-2222-2222-2222-222222222222',
+          factVersionId: null,
+          quote: 'Production rose over the financial year',
+          chunkText: 'Production rose over the financial year on higher throughput.',
+          sourceTier: 1,
+          factValue: null,
+          periodEnd: '2024-12-31',
+        },
+      ],
+    });
+    expect(find([dated], 'date_consistency')[0]).toMatchObject({ status: 'passed' });
+  });
+
+  it('flags a year no cited evidence is about', () => {
+    const misdated = claim({ statement: 'The company produced 45,455 metric tons in 2019.' });
+    expect(find([misdated], 'date_consistency')[0]).toMatchObject({
+      status: 'failed',
+      severity: 'warning',
+    });
+  });
+
+  it('reports rather than demotes, so a date alone never contradicts a claim', () => {
+    const misdated = claim({ statement: 'The company produced 45,455 metric tons in 2019.' });
+    const verdict = verifyClaims([misdated]);
+    expect(verdict.contradicted).toEqual([]);
+    expect(verdict.overall).toBe('warnings');
+  });
+
+  it('skips a statement that names no year', () => {
+    const undated = claim({ statement: 'The company operates one separation facility.' });
+    expect(find([undated], 'date_consistency')[0]).toMatchObject({ status: 'skipped' });
+  });
+
+  it('picks up exactly what the number rule drops', () => {
+    const misdated = claim({ statement: 'The company produced 45,455 metric tons in 2019.' });
+    // The number rule skips four-digit years on purpose; without this rule a
+    // misattributed period would pass every check unremarked.
+    expect(find([misdated], 'number_vs_fact')[0]).toMatchObject({ status: 'passed' });
+    expect(find([misdated], 'date_consistency')[0]).toMatchObject({ status: 'failed' });
   });
 });
 

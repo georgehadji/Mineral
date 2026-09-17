@@ -21,6 +21,7 @@ Evidence before prose. Deterministic calculations before LLM conclusions. Versio
 | `packages/ai/` | Model gateway: OpenRouter adapter, Zod to JSON Schema, tier routing |
 | `packages/monitoring/` | Deterministic drift rules: new sources, invalidated assumptions, valuation moves |
 | `packages/db/` | PostgreSQL schema, seeds, SQL invariant tests, SQL-first repositories, read models |
+| `evals/` | Labelled datasets and the scorer that gates changes to the deterministic layer |
 | `services/analytics/` | Python deterministic calculations behind `POST /calc/{method}`, including the concentration indices |
 | `infra/docker/` | Local PostgreSQL |
 
@@ -38,7 +39,7 @@ cd services/analytics && uv sync --extra dev && uv run pytest
 
 `pnpm check` runs the TypeScript typecheck and the Vitest suite. Database-backed
 tests are skipped unless `DATABASE_URL` is set, so the default run is hermetic.
-Verified locally: 177 hermetic tests, 240 with a database, and 84 Python tests.
+Verified locally: 192 hermetic tests, 255 with a database, and 84 Python tests.
 
 Configuration lives in `.env`, which Git ignores. Copy the example and fill
 in what you have:
@@ -362,6 +363,32 @@ again writes nothing.
 Rules belong to a user: `pnpm monitor` creates the three default rules for the
 only account if there is one, and wants `--user <email>` otherwise.
 
+## Evals
+
+```bash
+pnpm eval
+```
+
+Two labelled datasets and a scorer. `evals/datasets/verification-v1.json` gives
+the verification rules cases whose right answer is known; `extraction-v1.json`
+gives the XBRL concept map synthetic companyfacts and the figures it should
+read back. Both report accuracy, precision and recall per rule.
+
+Roughly half of every rule's cases are clean. A rule measured only on cases it
+should fail proves nothing about false positives, and a rule that fires on
+everything is as useless as one that never fires. Precision says how often a
+reported failure is real; recall says how much of what is wrong it finds.
+
+This is the gate. Each dataset carries the accuracy its target has to reach and
+a run below it exits non-zero, so a change to a verification rule or to the
+concept map cannot land while it makes either worse. CI runs it with no database
+and no model key, which is what lets it run on every pull request. Scores are
+stored in `research.evaluation_runs` when `DATABASE_URL` happens to be set.
+
+It earned itself on the first run: the contradiction rule emitted a check only
+when it fired, so a clean run and a run where the rule never executed looked
+identical in the stored checks. It now records a verdict for every claim.
+
 ## Schema check
 
 ```bash
@@ -388,4 +415,4 @@ Then run the migration and test with `psql -h localhost -p 55432 -U postgres -d 
 
 ## Implementation sequence
 
-See `docs/architecture/00-architecture-understanding.md` §J. Phases 0 to 11 are done. Next: phase 12, evals.
+See `docs/architecture/00-architecture-understanding.md` §J. Phases 0 to 12 are done, which is the end of the sequence the report lays out.

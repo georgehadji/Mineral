@@ -1,0 +1,351 @@
+{
+  "dataset": "extraction",
+  "version": "1.0.0",
+  "target": "packages/ingest/src/companyfacts.ts",
+  "notes": [
+    "Extraction against XBRL. XBRL is the ground truth for a financial figure:",
+    "the filer tagged it, the regulator received it, and no model is in the path,",
+    "so what is being measured here is whether the concept map and the",
+    "precedence rules read back exactly what was tagged.",
+    "Every value and accession below is synthetic. None is real SEC data."
+  ],
+  "minAccuracy": 1.0,
+  "cases": [
+    {
+      "id": "reads-a-duration-concept-with-its-period",
+      "expected": [
+        {
+          "code": "revenue",
+          "concept": "Revenues",
+          "value": 253400000,
+          "unit": "USD",
+          "periodStart": "2024-01-01",
+          "periodEnd": "2024-12-31"
+        }
+      ],
+      "companyfacts": {
+        "facts": {
+          "us-gaap": {
+            "Revenues": {
+              "units": {
+                "USD": [
+                  {
+                    "val": 253400000,
+                    "start": "2024-01-01",
+                    "end": "2024-12-31",
+                    "accn": "0000000000-25-000001",
+                    "form": "10-K",
+                    "filed": "2025-02-20",
+                    "fy": 2024,
+                    "fp": "FY"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "reads-an-instant-concept-with-its-as-of-date",
+      "expected": [
+        {
+          "code": "total_assets",
+          "concept": "Assets",
+          "value": 2600000000,
+          "unit": "USD",
+          "asOfDate": "2024-12-31"
+        }
+      ],
+      "companyfacts": {
+        "facts": {
+          "us-gaap": {
+            "Assets": {
+              "units": {
+                "USD": [
+                  {
+                    "val": 2600000000,
+                    "end": "2024-12-31",
+                    "accn": "0000000000-25-000001",
+                    "form": "10-K",
+                    "filed": "2025-02-20"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "prefers-the-asc-606-concept-when-a-filer-tags-both",
+      "expected": [
+        {
+          "code": "revenue",
+          "concept": "RevenueFromContractWithCustomerExcludingAssessedTax",
+          "value": 253400000,
+          "unit": "USD",
+          "periodStart": "2024-01-01",
+          "periodEnd": "2024-12-31"
+        }
+      ],
+      "companyfacts": {
+        "facts": {
+          "us-gaap": {
+            "Revenues": {
+              "units": {
+                "USD": [
+                  {
+                    "val": 111100000,
+                    "start": "2024-01-01",
+                    "end": "2024-12-31",
+                    "accn": "0000000000-25-000001",
+                    "form": "10-K",
+                    "filed": "2025-02-20"
+                  }
+                ]
+              }
+            },
+            "RevenueFromContractWithCustomerExcludingAssessedTax": {
+              "units": {
+                "USD": [
+                  {
+                    "val": 253400000,
+                    "start": "2024-01-01",
+                    "end": "2024-12-31",
+                    "accn": "0000000000-25-000001",
+                    "form": "10-K",
+                    "filed": "2025-02-20"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "takes-the-restated-value-from-the-later-filing",
+      "expected": [
+        {
+          "code": "net_income",
+          "concept": "NetIncomeLoss",
+          "value": 24000000,
+          "unit": "USD",
+          "periodStart": "2024-01-01",
+          "periodEnd": "2024-12-31"
+        }
+      ],
+      "companyfacts": {
+        "facts": {
+          "us-gaap": {
+            "NetIncomeLoss": {
+              "units": {
+                "USD": [
+                  {
+                    "val": 25000000,
+                    "start": "2024-01-01",
+                    "end": "2024-12-31",
+                    "accn": "0000000000-25-000001",
+                    "form": "10-K",
+                    "filed": "2025-02-20"
+                  },
+                  {
+                    "val": 24000000,
+                    "start": "2024-01-01",
+                    "end": "2024-12-31",
+                    "accn": "0000000000-26-000001",
+                    "form": "10-K",
+                    "filed": "2026-02-19"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "drops-a-duration-concept-tagged-without-a-start",
+      "expected": [],
+      "companyfacts": {
+        "facts": {
+          "us-gaap": {
+            "Revenues": {
+              "units": {
+                "USD": [
+                  {
+                    "val": 253400000,
+                    "end": "2024-12-31",
+                    "accn": "0000000000-25-000001",
+                    "form": "10-K",
+                    "filed": "2025-02-20"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "drops-an-instant-concept-tagged-with-a-start",
+      "expected": [],
+      "companyfacts": {
+        "facts": {
+          "us-gaap": {
+            "Assets": {
+              "units": {
+                "USD": [
+                  {
+                    "val": 2600000000,
+                    "start": "2024-01-01",
+                    "end": "2024-12-31",
+                    "accn": "0000000000-25-000001",
+                    "form": "10-K",
+                    "filed": "2025-02-20"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ignores-a-unit-it-was-not-asked-for",
+      "expected": [],
+      "companyfacts": {
+        "facts": {
+          "us-gaap": {
+            "Revenues": {
+              "units": {
+                "EUR": [
+                  {
+                    "val": 253400000,
+                    "start": "2024-01-01",
+                    "end": "2024-12-31",
+                    "accn": "0000000000-25-000001",
+                    "form": "10-K",
+                    "filed": "2025-02-20"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ignores-a-concept-outside-the-map",
+      "expected": [],
+      "companyfacts": {
+        "facts": {
+          "us-gaap": {
+            "EntityCommonStockSharesOutstanding": {
+              "units": {
+                "USD": [
+                  {
+                    "val": 100000000,
+                    "end": "2024-12-31",
+                    "accn": "0000000000-25-000001",
+                    "form": "10-K",
+                    "filed": "2025-02-20"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "drops-observations-older-than-the-cutoff",
+      "options": { "since": "2024-01-01" },
+      "expected": [
+        {
+          "code": "total_assets",
+          "concept": "Assets",
+          "value": 2600000000,
+          "unit": "USD",
+          "asOfDate": "2024-12-31"
+        }
+      ],
+      "companyfacts": {
+        "facts": {
+          "us-gaap": {
+            "Assets": {
+              "units": {
+                "USD": [
+                  {
+                    "val": 1000000000,
+                    "end": "2019-12-31",
+                    "accn": "0000000000-20-000001",
+                    "form": "10-K",
+                    "filed": "2020-02-20"
+                  },
+                  {
+                    "val": 2600000000,
+                    "end": "2024-12-31",
+                    "accn": "0000000000-25-000001",
+                    "form": "10-K",
+                    "filed": "2025-02-20"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "keeps-each-period-of-the-same-concept",
+      "expected": [
+        {
+          "code": "operating_cash_flow",
+          "concept": "NetCashProvidedByUsedInOperatingActivities",
+          "value": 300000000,
+          "unit": "USD",
+          "periodStart": "2023-01-01",
+          "periodEnd": "2023-12-31"
+        },
+        {
+          "code": "operating_cash_flow",
+          "concept": "NetCashProvidedByUsedInOperatingActivities",
+          "value": 310000000,
+          "unit": "USD",
+          "periodStart": "2024-01-01",
+          "periodEnd": "2024-12-31"
+        }
+      ],
+      "companyfacts": {
+        "facts": {
+          "us-gaap": {
+            "NetCashProvidedByUsedInOperatingActivities": {
+              "units": {
+                "USD": [
+                  {
+                    "val": 300000000,
+                    "start": "2023-01-01",
+                    "end": "2023-12-31",
+                    "accn": "0000000000-24-000001",
+                    "form": "10-K",
+                    "filed": "2024-02-20"
+                  },
+                  {
+                    "val": 310000000,
+                    "start": "2024-01-01",
+                    "end": "2024-12-31",
+                    "accn": "0000000000-25-000001",
+                    "form": "10-K",
+                    "filed": "2025-02-20"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

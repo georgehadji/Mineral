@@ -91,7 +91,8 @@ describe.skipIf(!url)('monitoring', () => {
   function citedChunkId(prompt: string): string {
     const at = prompt.indexOf(MARKER);
     if (at === -1) throw new Error('the module did not put the planted chunk in its prompt');
-    const ids = [...prompt.slice(0, at).matchAll(/\[chunk_id: ([0-9a-f-]{36})\]/g)];
+    // Modules are shown short handles now, not uuids: [chunk 7].
+    const ids = [...prompt.slice(0, at).matchAll(/\[chunk (\d+)\]/g)];
     const last = ids.at(-1);
     if (!last) throw new Error('no chunk id before the planted text');
     return last[1]!;
@@ -99,7 +100,7 @@ describe.skipIf(!url)('monitoring', () => {
 
   /** The revision of free cash flow this run was allowed to see. */
   function citedFactVersionId(prompt: string): string {
-    const found = prompt.match(/\[fact_version_id: ([0-9a-f-]{36})\][^\n]*\(free_cash_flow\)/);
+    const found = prompt.match(/\[figure (\d+)\][^\n]*\(free_cash_flow\)/);
     if (!found) throw new Error('free cash flow is not in this prompt');
     return found[1]!;
   }

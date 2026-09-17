@@ -65,12 +65,12 @@ export const EvidenceRefSchema = z.object({
     .string()
     .nullable()
     .default(null)
-    .describe('id of the chunk this comes from, copied exactly from the evidence list'),
+    .describe('handle of the chunk this comes from: the number shown in [chunk N], on its own'),
   fact_version_id: z
     .string()
     .nullable()
     .default(null)
-    .describe('id of the fact this comes from, copied exactly from the figures list'),
+    .describe('handle of the figure this comes from: the number shown in [figure N], on its own'),
   quote: z
     .string()
     .nullable()

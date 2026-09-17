@@ -36,7 +36,8 @@ describe.skipIf(!url)('verification', () => {
     const prompt = request.messages.map((m) => m.content).join('\n');
     const at = prompt.indexOf(MARKER);
     if (at === -1) throw new Error('the planted chunk is not in the prompt');
-    const ids = [...prompt.slice(0, at).matchAll(/\[chunk_id: ([0-9a-f-]{36})\]/g)];
+    // Modules are shown short handles now, not uuids: [chunk 7].
+    const ids = [...prompt.slice(0, at).matchAll(/\[chunk (\d+)\]/g)];
     const cited = ids.at(-1)![1]!;
     return {
       status: 200,

@@ -54,7 +54,14 @@ export function modelFor(task: ModelTask): string {
  * stored answer for an identical request rather than asking twice.
  */
 export const TEMPERATURE: number | null = null;
-const DEFAULT_MAX_TOKENS = 4096;
+/**
+ * 4096 was not enough for the deep recipe against a real filing. bear_case ran
+ * out mid-object and came back as "arguments that are not valid JSON", which
+ * reads like a model fault and is a budget one. supply_chain_position finished
+ * on exactly 4096, meaning the module that proposes facilities was being
+ * trimmed at the ceiling without anything saying so.
+ */
+const DEFAULT_MAX_TOKENS = 8192;
 const DEFAULT_TOOL_NAME = 'record_result';
 
 export interface ModelRequest<T> {

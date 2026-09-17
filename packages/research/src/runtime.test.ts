@@ -18,6 +18,76 @@ const claim = (over: Record<string, unknown> = {}) =>
     ],
   });
 
+describe('citation handles', () => {
+  const chunkId = (n: number) => `0000000${n}-0000-4000-8000-00000000000${n}`;
+
+  const context = {
+    subject: {
+      companyId: 'aaaaaaaa-0000-4000-8000-000000000001',
+      legalName: 'Test Co',
+      commonName: null,
+      cik: null,
+    },
+    asOfDate: '2026-06-30',
+    chunks: [1, 2, 3].map((n) => ({
+      chunkId: chunkId(n),
+      documentVersionId: 'bbbbbbbb-0000-4000-8000-000000000001',
+      documentTitle: 'Annual report',
+      publishedAt: null,
+      sourceTier: 1,
+      text: `Sentence number ${n} of the filing, long enough to quote.`,
+    })),
+    facts: [],
+    upstream: {},
+  };
+
+  const cited = async (chunk: string, quote: string) => {
+    const answering = async () =>
+      ModuleOutputSchema.parse({
+        claims: [
+          {
+            claim_key: 'k',
+            claim_type: 'business_fact',
+            statement: 'A statement.',
+            status: 'DERIVED',
+            confidence: 0.9,
+            evidence: [{ chunk_id: chunk, quote }],
+          },
+        ],
+      });
+    const output = await IMPLEMENTATIONS_BY_CODE.get('company_profile')!.run(context, answering);
+    return output.claims[0]!.evidence[0]!.chunk_id;
+  };
+
+  const inChunk = (n: number) => `Sentence number ${n} of the filing`;
+
+  it('turns the handle the prompt showed into the real chunk id', async () => {
+    expect(await cited('2', inChunk(2))).toBe(chunkId(2));
+  });
+
+  it('leaves a real id alone, so an older stored answer still resolves', async () => {
+    expect(await cited(chunkId(3), inChunk(3))).toBe(chunkId(3));
+  });
+
+  it('points a citation at the chunk its quote is really in', async () => {
+    // Quote is sentence 2; the module said chunk 1, one off. Also covers a
+    // handle that resolves to the wrong chunk rather than to nothing.
+    expect(await cited('1', inChunk(2))).toBe(chunkId(2));
+  });
+
+  it('leaves a quote that is in no chunk alone, so it still fails', async () => {
+    const unusable = 'A sentence that is in no chunk at all.';
+    expect(await cited('1', unusable)).toBe(chunkId(1));
+    // An out-of-range handle is not rewritten into something plausible either.
+    expect(await cited('99', unusable)).toBe('99');
+  });
+
+  it('leaves an ambiguous quote where the module put it', async () => {
+    // This tail is in all three chunks, so there is nothing to choose between.
+    expect(await cited('1', 'of the filing, long enough to quote.')).toBe(chunkId(1));
+  });
+});
+
 describe('module output validation', () => {
   it('accepts a cited claim', () => {
     expect(() => validateOutput('m', claim())).not.toThrow();

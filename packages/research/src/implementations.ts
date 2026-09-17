@@ -5,10 +5,13 @@ import {
   SUPPLY_CHAIN_STAGES,
   validateOutput,
   type Ask,
+  type ContextChunk,
+  type EvidenceRef,
   type ModuleImpl,
   type ModuleOutput,
   type ResearchContext,
 } from './runtime.ts';
+import { quoteIsContained } from './verification.ts';
 
 /**
  * The three modules of report J.6, plus the deterministic resolution step they
@@ -20,8 +23,10 @@ import {
  */
 
 const CITATION_RULES = [
-  'Cite every claim. Copy chunk_id or fact_version_id exactly as given; never invent one.',
+  // No bracketed example here on purpose: one read like a forty-first chunk.
+  'Cite every claim by the handle in the bracketed label above the text you are using. A chunk labelled "chunk 12" is chunk_id 12; a figure labelled "figure 3" is fact_version_id 3. Give the number on its own, and never cite a handle that is not in the lists below.',
   'A quote must be a span copied character for character out of the chunk you cite. Do not tidy, shorten across gaps, or paraphrase it.',
+  'Check the handle against the text you are quoting before you write it down. A quote under the wrong handle is thrown away exactly like an invented one.',
   'Cite a fact by fact_version_id with no quote. Figures are already verified; quoting them adds nothing.',
   'If the evidence does not answer something, emit the claim with status UNKNOWN and no evidence. That is a real answer here.',
   'Never state a number that is not in the evidence. Arithmetic belongs to the analytics engine, not to you.',
@@ -33,13 +38,23 @@ const CITATION_RULES = [
 const MAX_CHUNK_CHARS = 4000;
 const MAX_CHUNKS = 40;
 
+/**
+ * What a module is shown, in the order it is shown. Rendering and resolution
+ * both go through this, because a citation handle is a position in these lists
+ * and two places computing that position separately is one refactor away from
+ * citing the wrong chunk silently.
+ */
+function citable(context: ResearchContext) {
+  return { chunks: context.chunks.slice(0, MAX_CHUNKS), facts: context.facts };
+}
+
 function renderChunks(context: ResearchContext): string {
-  if (context.chunks.length === 0) return 'No document text in this snapshot.';
-  return context.chunks
-    .slice(0, MAX_CHUNKS)
+  const { chunks } = citable(context);
+  if (chunks.length === 0) return 'No document text in this snapshot.';
+  return chunks
     .map(
-      (chunk) =>
-        `[chunk_id: ${chunk.chunkId}] ${chunk.documentTitle}` +
+      (chunk, index) =>
+        `[chunk ${index + 1}] ${chunk.documentTitle}` +
         `${chunk.publishedAt ? ` (${chunk.publishedAt})` : ''} tier ${chunk.sourceTier}\n` +
         chunk.text.slice(0, MAX_CHUNK_CHARS),
     )
@@ -47,14 +62,82 @@ function renderChunks(context: ResearchContext): string {
 }
 
 function renderFacts(context: ResearchContext): string {
-  if (context.facts.length === 0) return 'No promoted figures in this snapshot.';
-  return context.facts
+  const { facts } = citable(context);
+  if (facts.length === 0) return 'No promoted figures in this snapshot.';
+  return facts
     .map(
-      (fact) =>
-        `[fact_version_id: ${fact.factVersionId}] ${fact.label} (${fact.code}) = ${fact.value}` +
+      (fact, index) =>
+        `[figure ${index + 1}] ${fact.label} (${fact.code}) = ${fact.value}` +
         `${fact.unit ? ` ${fact.unit}` : ''}${fact.periodEnd ? ` as of ${fact.periodEnd}` : ''}`,
     )
     .join('\n');
+}
+
+/**
+ * Turns the handles a module cited back into real ids.
+ *
+ * Modules used to be shown a 36-character uuid per chunk and asked to copy the
+ * right one out of forty. They did not: against a real 10-K every rejected
+ * citation quoted text that was in the snapshot verbatim, under a different
+ * chunk's id. A wrong uuid is indistinguishable from a fabricated one by the
+ * time it reaches the gate, so the run died on a clerical error.
+ *
+ * A handle is the position shown in brackets, which a model can carry across a
+ * long prompt. A real id is still accepted: re-running an older stored output
+ * through this must not turn a correct citation into a broken one.
+ */
+/**
+ * Points a citation at the chunk its quote is actually in.
+ *
+ * Even with handles a model goes one off: against a real 10-K it cited chunk 38
+ * for a sentence sitting under chunk 39. The quote itself was copied perfectly.
+ * Rejecting that is the gate punishing a clerical slip rather than the thing it
+ * exists to catch, and it costs the whole run.
+ *
+ * This is not leniency. The quote still has to appear, character for character
+ * after the usual folding, in the evidence the module was shown, and in exactly
+ * one chunk of it. One chunk means there is nothing to choose between, so the
+ * source is a fact rather than a guess. A quote in no chunk stays wrong and a
+ * quote in several stays where the module put it, so both still fail.
+ */
+function repoint(chunks: readonly ContextChunk[], ref: EvidenceRef): EvidenceRef {
+  const quote = ref.quote?.trim();
+  if (!ref.chunk_id || !quote) return ref;
+
+  const cited = chunks.find((chunk) => chunk.chunkId === ref.chunk_id);
+  if (cited && quoteIsContained(quote, cited.text)) return ref;
+
+  const holders = chunks.filter((chunk) => quoteIsContained(quote, chunk.text));
+  return holders.length === 1 ? { ...ref, chunk_id: holders[0]!.chunkId } : ref;
+}
+
+function resolveHandles(context: ResearchContext, output: ModuleOutput): ModuleOutput {
+  const { chunks, facts } = citable(context);
+  const chunkIds = new Set(chunks.map((chunk) => chunk.chunkId));
+  const factIds = new Set(facts.map((fact) => fact.factVersionId));
+
+  const at = <T>(list: readonly T[], raw: string): T | undefined => {
+    if (!/^\d+$/.test(raw.trim())) return undefined;
+    const position = Number(raw.trim());
+    return position >= 1 && position <= list.length ? list[position - 1] : undefined;
+  };
+
+  return {
+    ...output,
+    claims: output.claims.map((claim) => ({
+      ...claim,
+      evidence: claim.evidence.map((ref) => {
+        const resolved = { ...ref };
+        if (ref.chunk_id && !chunkIds.has(ref.chunk_id)) {
+          resolved.chunk_id = at(chunks, ref.chunk_id)?.chunkId ?? ref.chunk_id;
+        }
+        if (ref.fact_version_id && !factIds.has(ref.fact_version_id)) {
+          resolved.fact_version_id = at(facts, ref.fact_version_id)?.factVersionId ?? ref.fact_version_id;
+        }
+        return repoint(chunks, resolved);
+      }),
+    })),
+  };
 }
 
 function renderUpstream(context: ResearchContext): string {
@@ -77,13 +160,17 @@ function subjectLine(context: ResearchContext): string {
 
 async function askFor(
   code: string,
+  context: ResearchContext,
   ask: Ask,
   task: 'extraction' | 'synthesis',
   system: string,
   user: string,
 ): Promise<ModuleOutput> {
   const output = await ask({ task, system, user });
-  return validateOutput(code, output);
+  // Handles become real ids before anything is validated, so every check
+  // downstream -- here, and the snapshot check in packages/db -- sees the same
+  // ids the rest of the system uses.
+  return validateOutput(code, resolveHandles(context, output));
 }
 
 /**
@@ -104,7 +191,7 @@ const entityResolution: ModuleImpl = {
 const companyProfile: ModuleImpl = {
   code: 'company_profile',
   prompt: {
-    version: '1.0.0',
+    version: '1.1.0',
     system:
       'You read company filings and state what the company is, from the filings alone.\n\n' +
       CITATION_RULES,
@@ -112,6 +199,7 @@ const companyProfile: ModuleImpl = {
   run(context, ask) {
     return askFor(
       'company_profile',
+      context,
       ask,
       'extraction',
       companyProfile.prompt!.system,
@@ -132,7 +220,7 @@ const companyProfile: ModuleImpl = {
 const businessModel: ModuleImpl = {
   code: 'business_model',
   prompt: {
-    version: '1.0.0',
+    version: '1.1.0',
     system:
       'You describe how a company actually earns money: what it sells, to whom, on what terms, ' +
       'and what the revenue depends on.\n\n' +
@@ -141,6 +229,7 @@ const businessModel: ModuleImpl = {
   run(context, ask) {
     return askFor(
       'business_model',
+      context,
       ask,
       'extraction',
       businessModel.prompt!.system,
@@ -156,7 +245,7 @@ const businessModel: ModuleImpl = {
 const commodityExposure: ModuleImpl = {
   code: 'commodity_exposure',
   prompt: {
-    version: '1.0.0',
+    version: '1.1.0',
     system:
       'You identify which commodities a company is economically exposed to, and how, from ' +
       'filings alone.\n\n' +
@@ -165,6 +254,7 @@ const commodityExposure: ModuleImpl = {
   run(context, ask) {
     return askFor(
       'commodity_exposure',
+      context,
       ask,
       'extraction',
       commodityExposure.prompt!.system,
@@ -180,7 +270,7 @@ const commodityExposure: ModuleImpl = {
 const financialQuality: ModuleImpl = {
   code: 'financial_quality',
   prompt: {
-    version: '1.0.0',
+    version: '1.1.0',
     system:
       'You judge the quality of a company\'s reported financials: durability of revenue, margin ' +
       'behaviour, cash conversion, balance-sheet strength.\n\n' +
@@ -191,6 +281,7 @@ const financialQuality: ModuleImpl = {
   run(context, ask) {
     return askFor(
       'financial_quality',
+      context,
       ask,
       'synthesis',
       financialQuality.prompt!.system,
@@ -211,7 +302,7 @@ const financialQuality: ModuleImpl = {
 const capitalStructure: ModuleImpl = {
   code: 'capital_structure',
   prompt: {
-    version: '1.0.0',
+    version: '1.1.0',
     system:
       'You describe how a company is funded: debt, equity, maturities, covenants, dilution, and ' +
       'what its cost of capital is driven by.\n\n' +
@@ -220,6 +311,7 @@ const capitalStructure: ModuleImpl = {
   run(context, ask) {
     return askFor(
       'capital_structure',
+      context,
       ask,
       'synthesis',
       capitalStructure.prompt!.system,
@@ -246,7 +338,7 @@ const ASSUMPTION_MENU = Object.entries(ASSUMPTION_BANDS)
 const valuationAssumptions: ModuleImpl = {
   code: 'valuation_assumptions',
   prompt: {
-    version: '1.0.0',
+    version: '1.1.0',
     system:
       'You propose the inputs a discounted cash flow model for this company should use. You do ' +
       'not value the company and you do not compute anything: a deterministic engine does that ' +
@@ -259,6 +351,7 @@ const valuationAssumptions: ModuleImpl = {
   run(context, ask) {
     return askFor(
       'valuation_assumptions',
+      context,
       ask,
       'synthesis',
       valuationAssumptions.prompt!.system,
@@ -286,7 +379,7 @@ const valuationAssumptions: ModuleImpl = {
 const industryPosition: ModuleImpl = {
   code: 'industry_position',
   prompt: {
-    version: '1.0.0',
+    version: '1.1.0',
     system:
       'You place a company within its industry: what the industry is, how it is structured, and ' +
       'where in it this company sits.\n\n' +
@@ -295,6 +388,7 @@ const industryPosition: ModuleImpl = {
   run(context, ask) {
     return askFor(
       'industry_position',
+      context,
       ask,
       'extraction',
       industryPosition.prompt!.system,
@@ -317,7 +411,7 @@ const supplyChainPosition: ModuleImpl = {
   code: 'supply_chain_position',
   prompt: {
     // 1.1.0 adds the facilities array. The claims it asks for are unchanged.
-    version: '1.1.0',
+    version: '1.2.0',
     system:
       'You locate a company in a physical supply chain: which stages it occupies, what it takes ' +
       'in, what it puts out, and who it depends on either side.\n\n' +
@@ -336,6 +430,7 @@ const supplyChainPosition: ModuleImpl = {
   run(context, ask) {
     return askFor(
       'supply_chain_position',
+      context,
       ask,
       'synthesis',
       supplyChainPosition.prompt!.system,
@@ -352,7 +447,7 @@ const supplyChainPosition: ModuleImpl = {
 const projectPipeline: ModuleImpl = {
   code: 'project_pipeline',
   prompt: {
-    version: '1.0.0',
+    version: '1.1.0',
     system:
       'You record what a company is building: projects, facilities, expansions, their stage and ' +
       'their stated timing.\n\n' +
@@ -363,6 +458,7 @@ const projectPipeline: ModuleImpl = {
   run(context, ask) {
     return askFor(
       'project_pipeline',
+      context,
       ask,
       'extraction',
       projectPipeline.prompt!.system,
@@ -379,7 +475,7 @@ const projectPipeline: ModuleImpl = {
 const management: ModuleImpl = {
   code: 'management',
   prompt: {
-    version: '1.0.0',
+    version: '1.1.0',
     system:
       'You assess management and governance from the record: who runs the company, what they ' +
       'said they would do, and what the filings show they did.\n\n' +
@@ -390,6 +486,7 @@ const management: ModuleImpl = {
   run(context, ask) {
     return askFor(
       'management',
+      context,
       ask,
       'synthesis',
       management.prompt!.system,
@@ -406,7 +503,7 @@ const management: ModuleImpl = {
 const competitiveLandscape: ModuleImpl = {
   code: 'competitive_landscape',
   prompt: {
-    version: '1.0.0',
+    version: '1.1.0',
     system:
       'You identify who a company competes with and on what, from filings alone.\n\n' +
       CITATION_RULES +
@@ -416,6 +513,7 @@ const competitiveLandscape: ModuleImpl = {
   run(context, ask) {
     return askFor(
       'competitive_landscape',
+      context,
       ask,
       'synthesis',
       competitiveLandscape.prompt!.system,
@@ -432,7 +530,7 @@ const competitiveLandscape: ModuleImpl = {
 const risksModule: ModuleImpl = {
   code: 'risks',
   prompt: {
-    version: '1.0.0',
+    version: '1.1.0',
     system:
       'You state what could go wrong for this company, and how you would know it was ' +
       'happening.\n\n' +
@@ -443,6 +541,7 @@ const risksModule: ModuleImpl = {
   run(context, ask) {
     return askFor(
       'risks',
+      context,
       ask,
       'synthesis',
       risksModule.prompt!.system,
@@ -459,7 +558,7 @@ const risksModule: ModuleImpl = {
 const catalysts: ModuleImpl = {
   code: 'catalysts',
   prompt: {
-    version: '1.0.0',
+    version: '1.1.0',
     system:
       'You identify dated, checkable events that would change what this company is worth.\n\n' +
       CITATION_RULES +
@@ -470,6 +569,7 @@ const catalysts: ModuleImpl = {
   run(context, ask) {
     return askFor(
       'catalysts',
+      context,
       ask,
       'synthesis',
       catalysts.prompt!.system,
@@ -494,7 +594,7 @@ const catalysts: ModuleImpl = {
 const bearCase: ModuleImpl = {
   code: 'bear_case',
   prompt: {
-    version: '1.0.0',
+    version: '1.1.0',
     system:
       'You argue the case against this company. Everything below was written by modules trying ' +
       'to describe it fairly; your job is to find where that description is weakest and say so ' +
@@ -509,6 +609,7 @@ const bearCase: ModuleImpl = {
   run(context, ask) {
     return askFor(
       'bear_case',
+      context,
       ask,
       'synthesis',
       bearCase.prompt!.system,

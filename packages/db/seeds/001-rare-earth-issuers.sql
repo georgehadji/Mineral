@@ -1,10 +1,11 @@
--- Seed: five SEC-registered rare-earth issuers plus one non-US issuer.
+-- Seed: seven SEC-registered rare-earth issuers plus four non-US issuers.
 --
 -- Every CIK here is copied from the SEC's own registry file
--- https://www.sec.gov/files/company_tickers.json (fetched 2026-09-14).
--- Fields that could not be verified from a primary source are left null
--- rather than guessed: an absent identifier is a correct statement about
--- what we know, a wrong one corrupts entity resolution permanently.
+-- https://www.sec.gov/files/company_tickers.json (fetched 2026-09-14, extra
+-- issuers below fetched 2026-09-17). Fields that could not be verified from
+-- a primary source are left null rather than guessed: an absent identifier
+-- is a correct statement about what we know, a wrong one corrupts entity
+-- resolution permanently.
 --
 -- Idempotent: re-running changes nothing. Natural keys are the CIK for US
 -- filers, the legal name otherwise, and (exchange, ticker) for listings.
@@ -99,6 +100,8 @@ select pg_temp.seed_exchange('XNYS', 'New York Stock Exchange', 'US');
 select pg_temp.seed_exchange('XNAS', 'Nasdaq Stock Market', 'US');
 select pg_temp.seed_exchange('XASE', 'NYSE American', 'US');
 select pg_temp.seed_exchange('XASX', 'Australian Securities Exchange', 'AU');
+select pg_temp.seed_exchange('XTSE', 'Toronto Stock Exchange', 'CA');
+select pg_temp.seed_exchange('XTSX', 'TSX Venture Exchange', 'CA');
 
 select pg_temp.seed_issuer(
   'MP Materials Corp. / DE', 'MP Materials', '0001801368', 'US',
@@ -142,5 +145,31 @@ insert into core.company_aliases (company_id, alias, alias_type)
 select id, 'Lynas Corporation', 'former_name' from core.companies
 where legal_name = 'Lynas Rare Earths Limited'
 on conflict do nothing;
+
+-- US-registered: a coking-coal miner with an SEC CIK, developing the Brook
+-- Mine rare earth project in Wyoming as a byproduct of its coal reserves.
+select pg_temp.seed_issuer(
+  'Ramaco Resources, Inc.', 'Ramaco Resources', '1687187', 'US',
+  'https://ramacoresources.com', 'XNAS', 'METC', 'USD');
+
+-- US-registered under a Canadian holding company: primary listing is TSX
+-- Venture, but the CIK below is real and belongs to the same legal entity,
+-- not to the listing it is recorded against (company_identifiers and
+-- listings are separate tables for exactly this reason).
+select pg_temp.seed_issuer(
+  'Ucore Rare Metals Inc.', 'Ucore Rare Metals', '1495651', 'CA',
+  'https://ucore.com', 'XTSX', 'UCU', 'CAD');
+
+-- Non-US issuer, no CIK: building the Eneabba rare earth refinery, the
+-- separation stage this seed otherwise has only Lynas covering.
+select pg_temp.seed_issuer(
+  'Iluka Resources Limited', 'Iluka Resources', null, 'AU',
+  'https://iluka.com', 'XASX', 'ILU', 'AUD');
+
+-- Non-US issuer, no CIK: separation and permanent-magnet manufacturing, the
+-- downstream stage no other issuer in this seed reaches.
+select pg_temp.seed_issuer(
+  'Neo Performance Materials Inc.', 'Neo Performance Materials', null, 'CA',
+  'https://neomaterials.com', 'XTSE', 'NEO', 'CAD');
 
 commit;

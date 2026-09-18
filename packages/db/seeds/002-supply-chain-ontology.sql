@@ -199,4 +199,64 @@ select pg_temp.link(m.id, 'SUPPLIES', em.id)
  where m.code = 'traction_motor'
    and em.code in ('ev', 'wind', 'robotics', 'defense', 'consumer_electronics');
 
+-- The other words for materials this ontology already has.
+--
+-- Fifteen modules read one filing and write the phrase the filing used, so a
+-- mine that produces rare_earth_ore gets proposed as "rare_earth_elements" by
+-- the module that read the geology section and left blank by the module that
+-- read the outlook. Without these rows the first is refused as an unknown
+-- material and the second is approved, and the ontology learns less from the
+-- module that knew more.
+--
+-- Each row says two spellings are one material. None introduces a material,
+-- and none is a near-neighbour: "rare_earth_oxide" is absent because it can
+-- mean the NdPr oxide or the dysprosium oxide, and guessing between them is
+-- worse than refusing. Words for things outside this chain -- coal above all,
+-- which the Ramaco run proposed thirteen times -- are absent for the same
+-- reason: filing them under the nearest material would invent a supply chain.
+create or replace function pg_temp.seed_material_alias(p_material_code text, p_alias text)
+returns void language plpgsql as $$
+declare v_id uuid;
+begin
+  select id into v_id from ontology.materials where code = p_material_code;
+  if v_id is null then
+    raise exception 'no material % to alias', p_material_code;
+  end if;
+  insert into ontology.material_aliases (material_id, alias) values (v_id, p_alias)
+  on conflict do nothing;
+end $$;
+
+select pg_temp.seed_material_alias('rare_earth_ore', 'rare_earth_elements');
+select pg_temp.seed_material_alias('rare_earth_ore', 'rare earth elements');
+select pg_temp.seed_material_alias('rare_earth_ore', 'rare_earths');
+select pg_temp.seed_material_alias('rare_earth_ore', 'ree');
+select pg_temp.seed_material_alias('rare_earth_ore', 'rare_earth_minerals');
+
+select pg_temp.seed_material_alias('rare_earth_concentrate', 'ree_concentrate');
+select pg_temp.seed_material_alias('rare_earth_concentrate', 'rare earth concentrate');
+select pg_temp.seed_material_alias('rare_earth_concentrate', 'mixed_rare_earth_concentrate');
+
+select pg_temp.seed_material_alias('ndpr_oxide', 'ndpr');
+select pg_temp.seed_material_alias('ndpr_oxide', 'neodymium_praseodymium_oxide');
+select pg_temp.seed_material_alias('ndpr_oxide', 'praseodymium_neodymium_oxide');
+select pg_temp.seed_material_alias('ndpr_oxide', 'nd_pr_oxide');
+
+select pg_temp.seed_material_alias('dysprosium_oxide', 'dy_oxide');
+
+select pg_temp.seed_material_alias('ndpr_metal', 'neodymium_praseodymium_metal');
+
+select pg_temp.seed_material_alias('ndfeb_alloy', 'neodymium_iron_boron_alloy');
+
+select pg_temp.seed_material_alias('ndfeb_magnet', 'ndfeb_magnets');
+select pg_temp.seed_material_alias('ndfeb_magnet', 'neodymium_magnet');
+select pg_temp.seed_material_alias('ndfeb_magnet', 'neodymium_iron_boron_magnet');
+select pg_temp.seed_material_alias('ndfeb_magnet', 'sintered_ndfeb_magnet');
+
+select pg_temp.seed_material_alias('magnet_scrap', 'magnet_swarf');
+select pg_temp.seed_material_alias('magnet_scrap', 'end_of_life_magnets');
+select pg_temp.seed_material_alias('magnet_scrap', 'recycled_magnets');
+
+select pg_temp.seed_material_alias('traction_motor', 'ev_traction_motor');
+select pg_temp.seed_material_alias('traction_motor', 'electric_traction_motor');
+
 commit;

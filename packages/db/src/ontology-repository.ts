@@ -342,21 +342,55 @@ async function loadFacilityProposals(pool: Pool, runId: UUID): Promise<StoredPro
   return out;
 }
 
-async function knownCodes(pool: Pool): Promise<{
+interface KnownCodes {
   stages: Map<string, UUID>;
-  materials: Map<string, UUID>;
+  /**
+   * Every word that names a material, canonical codes and aliases alike,
+   * lower-cased, each pointing at the row it means. A module writes the phrase
+   * its filing used, so the map has to answer for "rare_earth_elements" as
+   * well as for "rare_earth_ore" -- see ontology.material_aliases.
+   */
+  materials: Map<string, { id: UUID; code: string }>;
   countries: Set<string>;
-}> {
+}
+
+async function knownCodes(pool: Pool): Promise<KnownCodes> {
   const [stageRows, materialRows, countryRows] = await Promise.all([
     pool.query<{ code: string; id: string }>(`select code, id from ontology.supply_chain_stages`),
-    pool.query<{ code: string; id: string }>(`select code, id from ontology.materials`),
+    // Aliases first and canonical codes second, so an alias can never shadow a
+    // real material: the later row wins when Map is built from the pairs, and
+    // a seed that aliased an existing code would be inert rather than
+    // misleading.
+    pool.query<{ key: string; id: string; code: string }>(
+      `select lower(a.alias) as key, m.id, m.code, 1 as precedence
+         from ontology.material_aliases a
+         join ontology.materials m on m.id = a.material_id
+        union all
+       select lower(m.code) as key, m.id, m.code, 2 from ontology.materials m
+        order by precedence`,
+    ),
     pool.query<{ iso2: string }>(`select iso2 from ontology.countries`),
   ]);
   return {
     stages: new Map(stageRows.rows.map((row) => [row.code, row.id])),
-    materials: new Map(materialRows.rows.map((row) => [row.code, row.id])),
+    materials: new Map(materialRows.rows.map((row) => [row.key, { id: row.id, code: row.code }])),
     countries: new Set(countryRows.rows.map((row) => row.iso2)),
   };
+}
+
+/**
+ * The material a proposal names, whatever it called it, or null when the
+ * ontology has no such material. Resolving before the policy runs matters for
+ * the same reason site_key does: two modules calling one ore
+ * "rare_earth_elements" and "rare_earth_ore" are agreeing, and a rule that
+ * compared the raw strings would read that agreement as a contradiction and
+ * refuse both.
+ */
+function resolveMaterial(
+  codes: KnownCodes,
+  code: string | null,
+): { id: UUID; code: string } | null {
+  return code === null ? null : (codes.materials.get(code.toLowerCase()) ?? null);
 }
 
 /**
@@ -409,20 +443,24 @@ export async function promoteFacilities(
   const siteKeys = await foldNames(pool, stored.map((item) => item.proposal.name));
 
   const verdicts = applyFacilityPolicy(
-    stored.map((item, index) => ({
-      name: item.proposal.name,
-      siteKey: siteKeys[index],
-      stageCode: item.proposal.stage_code,
-      materialCode: item.proposal.material_code,
-      countryCode: item.proposal.country_code,
-      status: item.proposal.status,
-      sourceClaimStatus: item.claimStatus,
-      stageKnown: codes.stages.has(item.proposal.stage_code),
-      materialKnown:
-        item.proposal.material_code === null || codes.materials.has(item.proposal.material_code),
-      countryKnown:
-        item.proposal.country_code === null || codes.countries.has(item.proposal.country_code),
-    })),
+    stored.map((item, index) => {
+      const material = resolveMaterial(codes, item.proposal.material_code);
+      return {
+        name: item.proposal.name,
+        siteKey: siteKeys[index],
+        stageCode: item.proposal.stage_code,
+        // The canonical code when one was found, and otherwise the word the
+        // module used, so a refusal names what the model actually said.
+        materialCode: material?.code ?? item.proposal.material_code,
+        countryCode: item.proposal.country_code,
+        status: item.proposal.status,
+        sourceClaimStatus: item.claimStatus,
+        stageKnown: codes.stages.has(item.proposal.stage_code),
+        materialKnown: item.proposal.material_code === null || material !== null,
+        countryKnown:
+          item.proposal.country_code === null || codes.countries.has(item.proposal.country_code),
+      };
+    }),
   );
 
   const decisions: FacilityPromotion[] = [];
@@ -453,12 +491,10 @@ async function upsertFacility(
   pool: Pool,
   companyId: UUID,
   item: StoredProposal,
-  codes: { stages: Map<string, UUID>; materials: Map<string, UUID> },
+  codes: KnownCodes,
 ): Promise<UUID> {
   const stageId = codes.stages.get(item.proposal.stage_code)!;
-  const materialId = item.proposal.material_code
-    ? (codes.materials.get(item.proposal.material_code) ?? null)
-    : null;
+  const materialId = resolveMaterial(codes, item.proposal.material_code)?.id ?? null;
 
   // Looked up before inserting rather than `on conflict`, because minting the
   // entity id has to happen in the insert's own statement and would leave an
@@ -484,9 +520,22 @@ async function upsertFacility(
 
     const found = existing.rows[0];
     if (found) {
+      // Silence does not overwrite speech, the same rule the policy applies
+      // when it decides whether two modules disagree. Several modules
+      // corroborate one site and they answer different amounts: on the Ramaco
+      // run three named what Brook Mine produces and three said nothing about
+      // it, and a plain assignment let whichever landed last erase the others.
+      // 'unknown' is a non-answer in the same way a null is.
+      //
+      // The claim on the row follows its material, so a row never cites a
+      // claim that says less than the row holds.
       await client.query(
         `update ontology.facilities
-            set primary_material_id = $2, country_code = $3, status = $4, source_claim_id = $5
+            set primary_material_id = coalesce($2, primary_material_id),
+                country_code = coalesce($3, country_code),
+                status = case when $4 = 'unknown' then status else $4 end,
+                source_claim_id = case when $2 is not null or primary_material_id is null
+                                       then $5 else source_claim_id end
           where id = $1`,
         [found.id, ...values],
       );

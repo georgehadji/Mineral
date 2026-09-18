@@ -325,5 +325,25 @@ select pg_temp.expect_error(
          (select company_id from f)),
   '23505');
 
+-- 21. a material alias names one material, and never a material's own code
+select pg_temp.assert(
+  not exists (
+    select 1 from ontology.material_aliases a
+      join ontology.materials m on lower(m.code) = lower(a.alias)),
+  'an alias repeating a real material code would be inert, so it is a seed mistake');
+
+create temp table ma as
+select core.new_entity('material') as first_id, core.new_entity('material') as second_id;
+insert into ontology.materials(id, code, name) select first_id, 'test_material_a', 'A' from ma;
+insert into ontology.materials(id, code, name) select second_id, 'test_material_b', 'B' from ma;
+insert into ontology.material_aliases(material_id, alias) select first_id, 'Test Synonym' from ma;
+
+-- Case does not buy a second claim on the word: an alias that resolved to two
+-- materials would route half a supply chain to the wrong one.
+select pg_temp.expect_error(
+  format('insert into ontology.material_aliases(material_id, alias) values (%L, ''test synonym'')',
+         (select second_id from ma)),
+  '23505');
+
 select 'ALL SCHEMA TESTS PASSED' as result;
 rollback;

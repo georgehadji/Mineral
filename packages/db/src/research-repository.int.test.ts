@@ -375,6 +375,54 @@ describe.skipIf(!url)('the module runtime', () => {
     expect(aliases.rows).toEqual([
       { alias: `Test Separation Plant ${run} complex`, has_claim: true },
     ]);
+
+    // And the case the Ramaco run showed: a module writes the phrase its
+    // filing used for the material rather than this ontology's code. "NdPr" is
+    // ndpr_oxide, so the proposal is approved and the row keeps the canonical
+    // material -- before ontology.material_aliases this was refused as an
+    // unknown material while a module that said nothing was let through.
+    await pool.query(
+      `update research.module_runs
+          set output = jsonb_set(output, '{facilities,0,material_code}', '"NdPr"')
+        where run_id = $1 and output -> 'facilities' -> 0 ->> 'material_code' = 'ndpr_oxide'`,
+      [result.runId],
+    );
+    const aliased = await promoteFacilities(pool, result.runId);
+    expect(aliased.promoted).toBe(1);
+    expect(aliased.decisions.find((d) => d.status === 'approved')!.facilityId).toBe(
+      approved.facilityId,
+    );
+
+    const material = await pool.query<{ code: string | null }>(
+      `select m.code from ontology.facilities f
+         left join ontology.materials m on m.id = f.primary_material_id
+        where f.id = $1`,
+      [approved.facilityId],
+    );
+    expect(material.rows[0]!.code).toBe('ndpr_oxide');
+
+    // A module that corroborates the site while saying less must not erase
+    // what the others said: on the real run three modules named Brook Mine's
+    // material and three left it out, and the row ended up empty because the
+    // last write won.
+    await pool.query(
+      `update research.module_runs
+          set output = jsonb_set(
+                jsonb_set(output, '{facilities,0,material_code}', 'null'),
+                '{facilities,0,status}', '"unknown"')
+        where run_id = $1 and output -> 'facilities' -> 0 ->> 'material_code' = 'NdPr'`,
+      [result.runId],
+    );
+    const quieter = await promoteFacilities(pool, result.runId);
+    expect(quieter.promoted).toBe(1);
+
+    const kept = await pool.query<{ code: string | null; status: string }>(
+      `select m.code, f.status from ontology.facilities f
+         left join ontology.materials m on m.id = f.primary_material_id
+        where f.id = $1`,
+      [approved.facilityId],
+    );
+    expect(kept.rows[0]).toEqual({ code: 'ndpr_oxide', status: 'operating' });
   });
 
   it('returns the same run for the same snapshot instead of writing another', async () => {

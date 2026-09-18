@@ -39,7 +39,7 @@ cd services/analytics && uv sync --extra dev && uv run pytest
 
 `pnpm check` runs the TypeScript typecheck and the Vitest suite. Database-backed
 tests are skipped unless `DATABASE_URL` is set, so the default run is hermetic.
-Verified locally: 192 hermetic tests, 255 with a database, and 84 Python tests.
+Verified locally: 218 hermetic tests, 285 with a database, and 85 Python tests.
 
 Configuration lives in `.env`, which Git ignores. Copy the example and fill
 in what you have:
@@ -277,9 +277,9 @@ because the evidence is no longer the same evidence.
 pnpm web
 ```
 
-Then http://localhost:3000. It needs `DATABASE_URL` and a `BETTER_AUTH_SECRET`;
-model calls additionally need `OPENROUTER_API_KEY`, and a valuation needs
-`pnpm analytics` running.
+Then http://localhost:3000. It reads the repository's `.env` like the CLIs do,
+so `DATABASE_URL` is enough to look around; model calls additionally need
+`OPENROUTER_API_KEY`, and a valuation needs `pnpm analytics` running.
 
 The pages are read models and nothing else (invariant C.9). Every figure is read
 back from the row that recorded it: `packages/db/src/read-repository.ts` holds
@@ -307,6 +307,13 @@ for email and password only, in its own prefixed tables, because the one thing a
 passer-by must not be able to do is spend money on model calls. The trigger runs
 research, then verification, then the decision, and returns as soon as the run
 row exists so the status page has something to show.
+
+On one machine there is no passer-by, so `MINERAL_LOCAL_OPERATOR` disconnects
+the sign-in rather than removing it: set it to an address and the app skips the
+session, attributes runs to that person's `core.users` row, and sends
+`/sign-in` back to the index. Unset it and Better Auth guards the trigger
+again, unchanged. It is opt-in for the obvious reason -- an environment that
+never sets it is closed, and a host anyone can reach must not set it.
 
 ## Supply chain
 

@@ -93,6 +93,22 @@ def test_dcf_reaches_the_hand_computed_answer_through_the_registry():
     assert outputs["dcf_value_per_share"] == pytest.approx(12.0)
 
 
+def test_dcf_names_net_debt_only_when_it_was_given():
+    """The recorder refuses an output naming an input the run did not carry."""
+    with_debt = {o.code: o.inputs for o in calculate("dcf", SAMPLES["dcf"]).outputs}
+    assert "net_debt" in with_debt["dcf_equity_value"]
+    assert "net_debt" in with_debt["dcf_value_per_share"]
+
+    without = {k: v for k, v in SAMPLES["dcf"].items() if k != "net_debt"}
+    outputs = calculate("dcf", without).outputs
+    bridged = {o.code: o.inputs for o in outputs}
+    assert "net_debt" not in bridged["dcf_equity_value"]
+    assert "net_debt" not in bridged["dcf_value_per_share"]
+    # Bridged by nothing means equity is enterprise value, not a different sum.
+    values = {o.code: o.value for o in outputs}
+    assert values["dcf_equity_value"] == pytest.approx(values["dcf_enterprise_value"])
+
+
 def test_dcf_keeps_its_workings():
     detail = calculate("dcf", SAMPLES["dcf"]).detail
     assert detail["projected_cash_flows"] == pytest.approx([110.0, 121.0])

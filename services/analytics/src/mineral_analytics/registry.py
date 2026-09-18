@@ -116,9 +116,14 @@ def _dcf(values: Mapping[str, Any]) -> tuple[list[Output], dict[str, Any]]:
     result = dcf(flows, _num(values, "discount_rate"), _num(values, "terminal_growth"), net_debt, shares)
 
     sources = ("base_cash_flow", "growth_rates", "discount_rate", "terminal_growth")
+    # An input is named here only when it was given. net_debt defaults to zero,
+    # and a caller with no promoted net_debt fact sends none, so claiming the
+    # equity value came from one would be a provenance the recorder is right to
+    # refuse: equity equals enterprise value in that case, bridged by nothing.
+    bridge = ("net_debt",) if "net_debt" in values else ()
     outputs = [
         Output("dcf_enterprise_value", "DCF enterprise value", result.enterprise_value, CURRENCY, sources),
-        Output("dcf_equity_value", "DCF equity value", result.equity_value, CURRENCY, sources + ("net_debt",)),
+        Output("dcf_equity_value", "DCF equity value", result.equity_value, CURRENCY, sources + bridge),
     ]
     if result.value_per_share is not None:
         outputs.append(
@@ -127,7 +132,7 @@ def _dcf(values: Mapping[str, Any]) -> tuple[list[Output], dict[str, Any]]:
                 "DCF value per share",
                 result.value_per_share,
                 CURRENCY,
-                sources + ("net_debt", "shares_outstanding"),
+                sources + bridge + ("shares_outstanding",),
             )
         )
     detail = {

@@ -27,11 +27,15 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           {viewer ? (
             <>
               <span className="who">{viewer.email}</span>
-              <form action={signOut} className="inline">
-                <button type="submit" className="quiet">
-                  Sign out
-                </button>
-              </form>
+              {/* Nothing to sign out of when the operator came from the
+                  environment rather than from a session. */}
+              {!viewer.local && (
+                <form action={signOut} className="inline">
+                  <button type="submit" className="quiet">
+                    Sign out
+                  </button>
+                </form>
+              )}
             </>
           ) : (
             <Link href="/sign-in">Sign in</Link>

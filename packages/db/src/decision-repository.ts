@@ -203,8 +203,12 @@ async function loadValuationFacts(pool: Pool, subjectId: UUID): Promise<Map<stri
        join evidence.fact_definitions fd on fd.id = f.fact_definition_id
        join evidence.fact_versions fv on fv.id = f.current_version_id
       where f.entity_id = $1 and fv.numeric_value is not null and fd.code = any($2::text[])
+        -- A base cash flow is projected a year at a time, so it has to be a
+        -- year. The latest period is often a year-to-date: Ramaco's was six
+        -- months to 2026-06-30, and projecting it as annual halved the base.
+        and (fd.code <> all($3::text[]) or f.period_end - f.period_start between 350 and 380)
       order by fd.code, f.period_end desc nulls last, f.as_of_date desc nulls last`,
-    [subjectId, codes],
+    [subjectId, codes, BASE_CASH_FLOW_CODES],
   );
   return new Map(
     rows.map((row) => [
@@ -384,7 +388,18 @@ async function runValuation(
     return {
       calculationRunId: null,
       response: null,
-      skipped: `no promoted ${BASE_CASH_FLOW_CODES.join(' or ')} fact to project from`,
+      skipped: `no promoted annual ${BASE_CASH_FLOW_CODES.join(' or ')} fact to project from`,
+    };
+  }
+  // Growth applied to a loss grows the loss, and the result reads like a
+  // valuation while measuring nothing: Ramaco's half-year burn projected at 8%
+  // came out at minus $232 million. A company burning cash has no DCF value to
+  // report, which is itself the answer, and most of this universe is pre-revenue.
+  if (base.value <= 0) {
+    return {
+      calculationRunId: null,
+      response: null,
+      skipped: `the latest annual ${baseCode} is ${base.value}; a discounted cash flow of a business that is not generating cash projects the burn, not a value`,
     };
   }
 

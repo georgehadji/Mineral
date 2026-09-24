@@ -508,6 +508,39 @@ describe.skipIf(!url)('the module runtime', () => {
     expect(stored.rows[0]!.reason).toMatch(/quotes text that is not in chunk/);
   });
 
+  /**
+   * From a run against USA Rare Earth: company_profile returned one claim with
+   * its evidence missing, and the shape check threw for the whole module, so
+   * the run failed at its second step with nothing stored.
+   */
+  it('refuses an uncited claim without failing the module that made it', async () => {
+    const uncited: Transport = async () =>
+      reply([
+        {
+          claim_key: `uncited_${run}`,
+          claim_type: 'business_fact',
+          statement: 'The company is a rare earth producer.',
+          status: 'DERIVED',
+          confidence: 0.9,
+          evidence: [],
+        },
+      ]);
+
+    const result = await runResearch(pool, {
+      companyId,
+      recipe: CORE_RECIPE,
+      asOfDate: '2026-06-28',
+      transport: uncited,
+      apiKey: 'test-key',
+    });
+
+    expect(result.status).toBe('completed');
+    expect(result.claimCount).toBe(0);
+    const profile = result.modules.find((module) => module.code === 'company_profile')!;
+    expect(profile.status).toBe('completed');
+    expect(profile.rejected?.[0]?.reason).toMatch(/DERIVED with no evidence/);
+  });
+
   it('refuses to research a company with no evidence at all', async () => {
     const empty = await resolveCompany(pool, 'Lynas');
     if (empty.status !== 'resolved') throw new Error('seed 001 is missing Lynas');

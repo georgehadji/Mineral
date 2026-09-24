@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ModuleOutputSchema, validateOutput } from './runtime.ts';
+import { ModuleOutputSchema, citationFault, validateOutput } from './runtime.ts';
 import { CORE_RECIPE, DEEP_RECIPE, IMPLEMENTATIONS_BY_CODE } from './implementations.ts';
 import { buildDag } from './dag.ts';
 
@@ -102,31 +102,31 @@ describe('module output validation', () => {
     });
   });
 
-  it('rejects an asserted claim with no evidence', () => {
-    expect(() => validateOutput('m', claim({ evidence: [] }))).toThrow(/with no evidence/);
+  // A claim's own citations are a fault of that claim, found by citationFault
+  // and dropped by the caller; they no longer throw for the whole module.
+  const fault = (over: Record<string, unknown>) => citationFault(claim(over).claims[0]!);
+
+  it('faults an asserted claim with no evidence, without failing the module', () => {
+    expect(fault({ evidence: [] })).toMatch(/with no evidence/);
+    expect(() => validateOutput('m', claim({ evidence: [] }))).not.toThrow();
   });
 
   it('allows UNKNOWN with no evidence, which is the honest non-answer', () => {
-    expect(() => validateOutput('m', claim({ status: 'UNKNOWN', evidence: [] }))).not.toThrow();
+    expect(fault({ status: 'UNKNOWN', evidence: [] })).toBeNull();
   });
 
-  it('rejects a chunk citation with no usable quote', () => {
-    expect(() => validateOutput('m', claim({ evidence: [{ chunk_id: 'c1', quote: 'too short' }] }))).toThrow(
-      /no usable quote/,
-    );
+  it('faults a chunk citation with no usable quote', () => {
+    expect(fault({ evidence: [{ chunk_id: 'c1', quote: 'too short' }] })).toMatch(/no usable quote/);
   });
 
-  it('rejects a citation that names both a chunk and a fact', () => {
-    expect(() =>
-      validateOutput(
-        'm',
-        claim({ evidence: [{ chunk_id: 'c1', fact_version_id: 'f1', quote: 'produced 45,455 metric tons' }] }),
-      ),
-    ).toThrow(/exactly one of/);
+  it('faults a citation that names both a chunk and a fact', () => {
+    expect(
+      fault({ evidence: [{ chunk_id: 'c1', fact_version_id: 'f1', quote: 'produced 45,455 metric tons' }] }),
+    ).toMatch(/exactly one of/);
   });
 
   it('accepts a fact citation with no quote, since a fact is already verified', () => {
-    expect(() => validateOutput('m', claim({ evidence: [{ fact_version_id: 'f1' }] }))).not.toThrow();
+    expect(fault({ evidence: [{ fact_version_id: 'f1' }] })).toBeNull();
   });
 
   it('rejects the same claim_key twice in one output', () => {

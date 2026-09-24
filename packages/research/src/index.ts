@@ -31,6 +31,7 @@ export {
   ModuleOutputError,
   ModuleOutputSchema,
   SUPPLY_CHAIN_STAGES,
+  citationFault,
   validateOutput,
   type Ask,
   type AssumptionProposal,

@@ -8,6 +8,7 @@ import {
   ModuleOutputError,
   ModuleOutputSchema,
   buildDag,
+  citationFault,
   quoteIsContained,
   type ContextChunk,
   type ContextFact,
@@ -309,6 +310,8 @@ function checkCitations(
   const rejected: RejectedClaim[] = [];
 
   const faultIn = (claim: ModuleOutput['claims'][number]): string | null => {
+    const shape = citationFault(claim);
+    if (shape) return shape;
     for (const ref of claim.evidence) {
       if (ref.fact_version_id) {
         if (!factIds.has(ref.fact_version_id)) {

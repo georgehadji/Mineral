@@ -199,12 +199,35 @@ export class ModuleOutputError extends Error {
 }
 
 /**
- * Shape rules the stored bytes are not needed for. Containment -- does the
- * quote actually appear in the chunk -- is checked against the database, not
- * here.
+ * What is wrong with one claim's citations as written, or null. Shape only:
+ * whether the quote is really in the chunk needs the stored bytes and is
+ * checked where they are.
  *
  * An uncited claim is the failure this exists to stop: it reads exactly like a
- * cited one once it is in the table.
+ * cited one once it is in the table. It is a fault of the claim, though, not of
+ * the module, so the caller drops the claim and keeps the rest -- a run against
+ * USA Rare Earth failed outright because one company_profile claim came back
+ * with its evidence missing.
+ */
+export function citationFault(claim: ModuleOutput['claims'][number]): string | null {
+  // An honest non-answer is allowed, and is the point of having UNKNOWN.
+  if (claim.status === 'UNKNOWN') return null;
+  if (claim.evidence.length === 0) return `is ${claim.status} with no evidence`;
+
+  for (const ref of claim.evidence) {
+    const targets = [ref.chunk_id, ref.fact_version_id].filter((t) => t !== null && t !== '');
+    if (targets.length !== 1) return 'must cite exactly one of chunk_id or fact_version_id';
+    if (ref.chunk_id && (!ref.quote || ref.quote.trim().length < MIN_QUOTE_CHARS)) {
+      return 'cites a chunk with no usable quote';
+    }
+  }
+  return null;
+}
+
+/**
+ * Rules about the output as a whole, which no single claim can be dropped to
+ * satisfy. A claim's own citations are judged by citationFault, one claim at a
+ * time.
  */
 export function validateOutput(code: string, output: ModuleOutput): ModuleOutput {
   const fail = (message: string): never => {
@@ -215,26 +238,6 @@ export function validateOutput(code: string, output: ModuleOutput): ModuleOutput
   for (const claim of output.claims) {
     if (seen.has(claim.claim_key)) fail(`claim_key ${claim.claim_key} appears twice in one output`);
     seen.add(claim.claim_key);
-
-    if (claim.status === 'UNKNOWN') {
-      // An honest non-answer is allowed, and is the point of having UNKNOWN.
-      continue;
-    }
-    if (claim.evidence.length === 0) {
-      fail(`claim ${claim.claim_key} is ${claim.status} with no evidence`);
-    }
-
-    for (const ref of claim.evidence) {
-      const targets = [ref.chunk_id, ref.fact_version_id].filter((t) => t !== null && t !== '');
-      if (targets.length !== 1) {
-        fail(`claim ${claim.claim_key} must cite exactly one of chunk_id or fact_version_id`);
-      }
-      if (ref.chunk_id) {
-        if (!ref.quote || ref.quote.trim().length < MIN_QUOTE_CHARS) {
-          fail(`claim ${claim.claim_key} cites a chunk with no usable quote`);
-        }
-      }
-    }
   }
 
   // One value per input, or a later reader picks arbitrarily between two. That

@@ -294,21 +294,24 @@ describe.skipIf(!url)('the decision layer', () => {
   }
 
   /** Promoted figures the DCF draws on, as XBRL ingestion would have left them. */
-  async function plantFacts(): Promise<void> {
+  async function plantFacts(
+    figures: ReadonlyArray<readonly [string, number]> = [
+      ['free_cash_flow', 76_400_000],
+      ['net_debt', 35_000_000],
+    ],
+    year = 2025,
+  ): Promise<void> {
     await inTransaction(pool, async (client) => {
-      const definitions = await ensureFactDefinitions(client, [
-        { code: 'free_cash_flow', name: 'Free cash flow', valueType: 'numeric', canonicalUnit: 'USD' },
-        { code: 'net_debt', name: 'Net debt', valueType: 'numeric', canonicalUnit: 'USD' },
-      ]);
-      for (const [code, value] of [
-        ['free_cash_flow', 76_400_000],
-        ['net_debt', 35_000_000],
-      ] as const) {
+      const definitions = await ensureFactDefinitions(
+        client,
+        figures.map(([code]) => ({ code, name: code, valueType: 'numeric' as const, canonicalUnit: 'USD' })),
+      );
+      for (const [code, value] of figures) {
         const definitionId = definitions.get(code);
         if (!definitionId) throw new Error(`no fact definition for ${code}`);
         const factId = await upsertFact(client, companyId, definitionId, {
-          periodStart: '2025-01-01',
-          periodEnd: '2025-12-31',
+          periodStart: `${year}-01-01`,
+          periodEnd: `${year}-12-31`,
         });
         // Invariant C.1: a promoted revision names the document it was read
         // from, unless it was calculated or came from a data provider.
@@ -561,5 +564,45 @@ describe.skipIf(!url)('the decision layer', () => {
       [runId],
     );
     expect(Number(rows[0]!.count)).toBe(0);
+  });
+
+  it('values from the latest year\'s cash flow after capex, not an older free cash flow', async () => {
+    // 2025 already has a free cash flow of 76.4M; 2026 has only the two filed lines.
+    await plantFacts(
+      [
+        ['operating_cash_flow', 100_000_000],
+        ['capital_expenditure', 40_000_000],
+      ],
+      2026,
+    );
+    let base: unknown;
+    const withRatios: CalcFn = async (method, inputs, currency) => {
+      if (method !== 'ratios') {
+        base = inputs.base_cash_flow;
+        return calc(method, inputs, currency);
+      }
+      const flow = (inputs.operating_cash_flow as number) - (inputs.capital_expenditure as number);
+      return {
+        method,
+        engine: 'ratios',
+        engine_version: '1.0.0',
+        currency,
+        inputs,
+        outputs: [
+          {
+            code: 'free_cash_flow',
+            name: 'Free cash flow',
+            value: flow,
+            unit: currency,
+            inputs: ['operating_cash_flow', 'capital_expenditure'],
+          },
+        ],
+        detail: {},
+      };
+    };
+
+    await decide(pool, { runId: firstRunId, calc: withRatios, transport: firstTransport, apiKey: 'test-key', again: true });
+
+    expect(base).toBe(60_000_000);
   });
 });

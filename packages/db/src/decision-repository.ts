@@ -371,6 +371,53 @@ interface ValuationOutcome {
  * was which, so "why is it worth this" is answerable by query rather than by
  * reading a prompt.
  */
+/**
+ * The valuation facts, with free cash flow for the year of the latest annual
+ * operating cash flow when the filings carry that year's capex. Operating cash
+ * flow alone leaves out the capex a miner lives on: Ramaco's 2025 was $2.0
+ * million before $62.8 million of it. The free cash flow is computed by the
+ * engine and recorded like any calculation, so it links back to both filings.
+ * A free cash flow from another year never stands in for this one.
+ */
+async function withFreeCashFlow(pool: Pool, subjectId: UUID, calc: CalcFn): Promise<Map<string, FactRow>> {
+  const facts = await loadValuationFacts(pool, subjectId);
+  const flow = facts.get('operating_cash_flow');
+  const free = facts.get('free_cash_flow');
+  if (!flow) return facts;
+  if (free?.periodStart === flow.periodStart && free?.periodEnd === flow.periodEnd) return facts;
+
+  const { rows } = await pool.query<{ fact_version_id: string; value: number }>(
+    `select fv.id as fact_version_id, fv.numeric_value::float8 as value
+       from evidence.facts f
+       join evidence.fact_definitions fd on fd.id = f.fact_definition_id
+       join evidence.fact_versions fv on fv.id = f.current_version_id
+      where f.entity_id = $1 and fd.code = 'capital_expenditure' and fv.numeric_value is not null
+        and f.period_start = $2::date and f.period_end = $3::date
+      limit 1`,
+    [subjectId, flow.periodStart, flow.periodEnd],
+  );
+  const capex = rows[0];
+  if (!capex) {
+    facts.delete('free_cash_flow');
+    return facts;
+  }
+
+  const response = CalcResponseSchema.parse(
+    await calc(
+      'ratios',
+      { operating_cash_flow: flow.value, capital_expenditure: capex.value },
+      flow.currency ?? 'USD',
+    ),
+  );
+  await recordCalculation(pool, {
+    subjectEntityId: subjectId,
+    response,
+    inputFactVersions: { operating_cash_flow: flow.factVersionId, capital_expenditure: capex.fact_version_id },
+    period: { periodStart: flow.periodStart, periodEnd: flow.periodEnd, asOfDate: flow.asOfDate },
+  });
+  return loadValuationFacts(pool, subjectId);
+}
+
 async function runValuation(
   pool: Pool,
   params: {
@@ -387,7 +434,7 @@ async function runValuation(
     return { calculationRunId: null, response: null, skipped: `policy approved no ${missing.join(', ')}` };
   }
 
-  const facts = await loadValuationFacts(pool, params.subjectId);
+  const facts = await withFreeCashFlow(pool, params.subjectId, params.calc);
   const baseCode = BASE_CASH_FLOW_CODES.find((code) => facts.has(code));
   const base = baseCode ? facts.get(baseCode)! : undefined;
   if (!base) {

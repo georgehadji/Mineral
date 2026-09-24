@@ -120,6 +120,50 @@ describe('numbers against evidence', () => {
     });
     expect(find([fromFact], 'number_vs_fact')[0]).toMatchObject({ status: 'passed' });
   });
+
+  const factCitation = (factValue: string) => ({
+    chunkId: null,
+    factVersionId: '33333333-3333-3333-3333-333333333333',
+    quote: null,
+    chunkText: null,
+    sourceTier: null,
+    factValue,
+    periodEnd: null,
+  });
+
+  /**
+   * From the Ramaco run: the fact is stored at full scale and the statement
+   * says it in millions. 161.0 million passed only because "161000000" happens
+   * to begin with "161"; 55.96 and 22.4 failed although the fact they cite is
+   * exactly the one they state.
+   */
+  it('accepts a cited fact stated in millions to the precision it was written', () => {
+    const stated = claim({
+      statement: 'An operating loss of $55.96 million, and operating cash flow of -$22.4m.',
+      evidence: [factCitation('-55963000.000000000000'), factCitation('-22430000')],
+    });
+    expect(find([stated], 'number_vs_fact')[0]).toMatchObject({ status: 'passed' });
+  });
+
+  it('still fails a scaled number the cited fact does not round to', () => {
+    const wrong = claim({
+      statement: 'An operating loss of $58.0 million.',
+      evidence: [factCitation('-55963000')],
+    });
+    expect(find([wrong], 'number_vs_fact')[0]).toMatchObject({
+      status: 'failed',
+      message: expect.stringContaining('58'),
+    });
+  });
+
+  it('does not read a day of the month, a quarter or a form name as a metric', () => {
+    const dated = claim({
+      statement:
+        'In the six months to June 30, 2026 the company produced 45,455 metric tons, ' +
+        'priced in contracts negotiated in Q3/Q4, as the 10-K states.',
+    });
+    expect(find([dated], 'number_vs_fact')[0]).toMatchObject({ status: 'passed' });
+  });
 });
 
 describe('source tier', () => {

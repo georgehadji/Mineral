@@ -130,6 +130,61 @@ function looksLikeAYear(value: string): boolean {
   return year >= 1900 && year <= 2100;
 }
 
+const MONTH =
+  '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|' +
+  'sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\\.?';
+
+/**
+ * Digits that name something rather than count it: the day in "June 30", an
+ * ISO date, the 3 in "Q3", the 10 in "10-K". A statement dates itself and names
+ * its source this way all the time and the quote it cites almost never repeats
+ * either, so counting them as metrics failed the Ramaco run on "the six months
+ * to June 30" and "the 10-K states".
+ */
+// ponytail: a number glued to a month ("in May 5 million tons") is read as a
+// day and skipped rather than checked; tighten if that ever hides a figure.
+const NOT_QUANTITIES: readonly RegExp[] = [
+  new RegExp(`\\b${MONTH}\\s+\\d{1,2}(?:st|nd|rd|th)?\\b`, 'gi'),
+  new RegExp(`\\b\\d{1,2}(?:st|nd|rd|th)?\\s+${MONTH}\\b`, 'gi'),
+  /\b\d{4}-\d{2}-\d{2}\b/g,
+  /\b[QH][1-4]\b/g,
+  /\b(?:10-[KQ]|8-K|6-K|20-F|40-F|[SF]-[134])\b/gi,
+];
+
+const withoutLabels = (text: string): string =>
+  NOT_QUANTITIES.reduce((out, pattern) => out.replace(pattern, ' '), text);
+
+const SCALES: Readonly<Record<string, number>> = {
+  thousand: 1e3,
+  k: 1e3,
+  million: 1e6,
+  mn: 1e6,
+  m: 1e6,
+  billion: 1e9,
+  bn: 1e9,
+};
+
+/**
+ * Numbers written with a scale -- "$55.96 million", "22.4m" -- as the value
+ * they denote and how far off a true value may be and still be written that
+ * way. A fact is stored at full scale, so "55.96 million" has to be compared
+ * as 55,960,000 give or take half a unit in its last digit, not as the string
+ * "55.96". Bare "b" is left out: it is a unit as often as it is a billion.
+ */
+function scaledNumbersIn(text: string): { normalised: string; value: number; tolerance: number }[] {
+  const found = text.matchAll(/(\d[\d,]*)(?:\.(\d+))?\s*(thousand|million|billion|mn|bn|m|k)\b/gi);
+  return [...found].map((match) => {
+    const scale = SCALES[match[3]!.toLowerCase()]!;
+    const decimals = match[2]?.length ?? 0;
+    const raw = match[2] ? `${match[1]}.${match[2]}` : match[1]!;
+    return {
+      normalised: normaliseNumber(raw),
+      value: Number(raw.replace(/,/g, '')) * scale,
+      tolerance: (0.5 * scale) / 10 ** decimals,
+    };
+  });
+}
+
 function pass(type: CheckType, claimId: UUID, message: string): CheckResult {
   return { type, status: 'passed', severity: 'info', claimId, message, evidence: {} };
 }
@@ -141,13 +196,31 @@ function pass(type: CheckType, claimId: UUID, message: string): CheckResult {
  */
 function checkNumbers(claim: VerifiableClaim): CheckResult {
   const cited = new Set<string>();
+  // The same evidence as values, for the scaled comparison. Magnitudes only: a
+  // loss is stored negative and stated as "a loss of $55.96 million".
+  const values: number[] = [];
   for (const ref of claim.evidence) {
-    for (const number of numbersIn(ref.quote ?? '')) cited.add(number);
-    for (const number of numbersIn(ref.factValue ?? '')) cited.add(number);
+    for (const number of numbersIn(ref.quote ?? '')) {
+      cited.add(number);
+      values.push(Number(number));
+    }
+    for (const scaled of scaledNumbersIn(ref.quote ?? '')) values.push(scaled.value);
+    for (const number of numbersIn(ref.factValue ?? '')) {
+      cited.add(number);
+      values.push(Number(number));
+    }
   }
 
-  const missing = numbersIn(claim.statement)
+  const statement = withoutLabels(claim.statement);
+  const scaledHits = new Set(
+    scaledNumbersIn(statement)
+      .filter((scaled) => values.some((value) => Math.abs(value - scaled.value) <= scaled.tolerance))
+      .map((scaled) => scaled.normalised),
+  );
+
+  const missing = numbersIn(statement)
     .filter((number) => !looksLikeAYear(number))
+    .filter((number) => !scaledHits.has(number))
     .filter((number) => !cited.has(number) && ![...cited].some((c) => c.startsWith(number)));
 
   if (missing.length === 0) {

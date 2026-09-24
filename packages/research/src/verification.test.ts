@@ -156,6 +156,29 @@ describe('numbers against evidence', () => {
     });
   });
 
+  // From the second Ramaco run: the scale word follows only the upper end.
+  it('scales both ends of a range the scale word follows', () => {
+    const range = claim({
+      statement: 'Total liabilities of $648.6-$657.0 million in the latest two quarters.',
+      evidence: [factCitation('648611000'), factCitation('657003000')],
+    });
+    expect(find([range], 'number_vs_fact')[0]).toMatchObject({ status: 'passed' });
+  });
+
+  // Filings spell small numbers out; a statement writes the digit.
+  it('matches a digit against the number the filing spelled out', () => {
+    const spelled = claim({
+      statement: 'Capacity is about 4 million clean tons.',
+      evidence: [
+        {
+          ...claim().evidence[0]!,
+          quote: 'our estimated aggregate annual production capacity is approximately four million clean tons',
+        },
+      ],
+    });
+    expect(find([spelled], 'number_vs_fact')[0]).toMatchObject({ status: 'passed' });
+  });
+
   it('does not read a day of the month, a quarter or a form name as a metric', () => {
     const dated = claim({
       statement:

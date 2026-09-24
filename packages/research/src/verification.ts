@@ -172,18 +172,41 @@ const SCALES: Readonly<Record<string, number>> = {
  * "55.96". Bare "b" is left out: it is a unit as often as it is a billion.
  */
 function scaledNumbersIn(text: string): { normalised: string; value: number; tolerance: number }[] {
-  const found = text.matchAll(/(\d[\d,]*)(?:\.(\d+))?\s*(thousand|million|billion|mn|bn|m|k)\b/gi);
-  return [...found].map((match) => {
+  // A range written once with its scale -- "$648.6-$657.0 million" -- scales
+  // both ends; the lower one has no word of its own after it.
+  const found = text.matchAll(
+    /(\d[\d,]*(?:\.\d+)?)(?:\s*(?:[-–—]|to)\s*\$?(\d[\d,]*(?:\.\d+)?))?\s*(thousand|million|billion|mn|bn|m|k)\b/gi,
+  );
+  return [...found].flatMap((match) => {
     const scale = SCALES[match[3]!.toLowerCase()]!;
-    const decimals = match[2]?.length ?? 0;
-    const raw = match[2] ? `${match[1]}.${match[2]}` : match[1]!;
-    return {
-      normalised: normaliseNumber(raw),
-      value: Number(raw.replace(/,/g, '')) * scale,
-      tolerance: (0.5 * scale) / 10 ** decimals,
-    };
+    return [match[1], match[2]]
+      .filter((raw): raw is string => raw !== undefined)
+      .map((raw) => ({
+        normalised: normaliseNumber(raw),
+        value: Number(raw.replace(/,/g, '')) * scale,
+        tolerance: (0.5 * scale) / 10 ** (raw.split('.')[1]?.length ?? 0),
+      }));
   });
 }
+
+const UNIT_WORDS = (
+  'zero one two three four five six seven eight nine ten eleven twelve thirteen ' +
+  'fourteen fifteen sixteen seventeen eighteen nineteen twenty'
+).split(' ');
+const TENS_WORDS = ['thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+const NUMBER_WORDS: Readonly<Record<string, string>> = {
+  ...Object.fromEntries(UNIT_WORDS.map((word, n) => [word, String(n)])),
+  ...Object.fromEntries(TENS_WORDS.map((word, i) => [word, String(30 + 10 * i)])),
+};
+
+/**
+ * A filing spells small numbers out -- "approximately four million clean
+ * tons" -- and a statement copying the fact writes the digit. Read on the
+ * evidence side only, so it can let a spelled-out number through and never
+ * invent one in a statement.
+ */
+const withDigits = (text: string): string =>
+  text.replace(/\b[a-z]+\b/gi, (word) => NUMBER_WORDS[word.toLowerCase()] ?? word);
 
 function pass(type: CheckType, claimId: UUID, message: string): CheckResult {
   return { type, status: 'passed', severity: 'info', claimId, message, evidence: {} };
@@ -200,11 +223,12 @@ function checkNumbers(claim: VerifiableClaim): CheckResult {
   // loss is stored negative and stated as "a loss of $55.96 million".
   const values: number[] = [];
   for (const ref of claim.evidence) {
-    for (const number of numbersIn(ref.quote ?? '')) {
+    const quote = withDigits(ref.quote ?? '');
+    for (const number of numbersIn(quote)) {
       cited.add(number);
       values.push(Number(number));
     }
-    for (const scaled of scaledNumbersIn(ref.quote ?? '')) values.push(scaled.value);
+    for (const scaled of scaledNumbersIn(quote)) values.push(scaled.value);
     for (const number of numbersIn(ref.factValue ?? '')) {
       cited.add(number);
       values.push(Number(number));

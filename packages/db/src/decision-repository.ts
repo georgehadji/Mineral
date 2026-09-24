@@ -14,7 +14,7 @@ import {
 import { inTransaction } from './client.ts';
 import { callModel } from './model-repository.ts';
 import { recordCalculation } from './calc-repository.ts';
-import { ensureModuleDefinitions, type Step } from './research-repository.ts';
+import { ensureModuleDefinitions, registerPrompt, type Step } from './research-repository.ts';
 
 /**
  * The decision layer, persistent half (report J.8).
@@ -486,19 +486,7 @@ async function ensureSynthesisPrompt(pool: Pool): Promise<UUID | null> {
   if (!definitionId) return null;
 
   const responseSchema = JSON.stringify(zodToJsonSchema(ThesisOutputSchema));
-  await pool.query(
-    `insert into research.prompt_versions
-       (module_definition_id, version, system_prompt, response_schema)
-     values ($1, $2, $3, $4::jsonb)
-     on conflict (module_definition_id, version) do nothing`,
-    [definitionId, SYNTHESIS_PROMPT_VERSION, SYNTHESIS_SYSTEM, responseSchema],
-  );
-  const { rows } = await pool.query<{ id: string }>(
-    `select id from research.prompt_versions
-      where module_definition_id = $1 and version = $2`,
-    [definitionId, SYNTHESIS_PROMPT_VERSION],
-  );
-  return rows[0]?.id ?? null;
+  return registerPrompt(pool, definitionId, SYNTHESIS_PROMPT_VERSION, SYNTHESIS_SYSTEM, responseSchema);
 }
 
 async function persistThesis(

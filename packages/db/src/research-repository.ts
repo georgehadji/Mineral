@@ -121,6 +121,44 @@ export async function ensureModuleDefinitions(pool: Pool): Promise<Map<string, U
   return ids;
 }
 
+/**
+ * The version a prompt is stored under: the one declared in code, plus a hash
+ * of the text and schema actually sent.
+ *
+ * The row is written once per version and never updated, so a version that
+ * outlives an edit points every later run at text that did not produce it. That
+ * happened twice in a day -- the synthesis prompt and the citation rules all
+ * modules share were both changed without a bump -- and the stored runs named
+ * prompts they were not given. Hashing the text makes the version change
+ * whenever the text does, whether or not anyone remembers to.
+ */
+export function promptVersionLabel(declared: string, system: string, schema: string): string {
+  return `${declared}+${sha256(`${system}\n${schema}`).slice(0, 12)}`;
+}
+
+export async function registerPrompt(
+  pool: Pool,
+  moduleDefinitionId: UUID,
+  declared: string,
+  system: string,
+  responseSchema: string,
+): Promise<UUID | null> {
+  const version = promptVersionLabel(declared, system, responseSchema);
+  await pool.query(
+    `insert into research.prompt_versions
+       (module_definition_id, version, system_prompt, response_schema)
+     values ($1, $2, $3, $4::jsonb)
+     on conflict (module_definition_id, version) do nothing`,
+    [moduleDefinitionId, version, system, responseSchema],
+  );
+  const { rows } = await pool.query<{ id: string }>(
+    `select id from research.prompt_versions
+      where module_definition_id = $1 and version = $2`,
+    [moduleDefinitionId, version],
+  );
+  return rows[0]?.id ?? null;
+}
+
 async function ensurePromptVersion(
   pool: Pool,
   moduleDefinitionId: UUID,
@@ -128,19 +166,7 @@ async function ensurePromptVersion(
 ): Promise<UUID | null> {
   if (!impl.prompt) return null;
   const responseSchema = JSON.stringify(zodToJsonSchema(ModuleOutputSchema));
-  await pool.query(
-    `insert into research.prompt_versions
-       (module_definition_id, version, system_prompt, response_schema)
-     values ($1, $2, $3, $4::jsonb)
-     on conflict (module_definition_id, version) do nothing`,
-    [moduleDefinitionId, impl.prompt.version, impl.prompt.system, responseSchema],
-  );
-  const { rows } = await pool.query<{ id: string }>(
-    `select id from research.prompt_versions
-      where module_definition_id = $1 and version = $2`,
-    [moduleDefinitionId, impl.prompt.version],
-  );
-  return rows[0]?.id ?? null;
+  return registerPrompt(pool, moduleDefinitionId, impl.prompt.version, impl.prompt.system, responseSchema);
 }
 
 async function ensureRecipe(pool: Pool, recipe: Recipe): Promise<UUID> {

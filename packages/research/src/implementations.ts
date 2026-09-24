@@ -29,7 +29,13 @@ const CITATION_RULES = [
   'Check the handle against the text you are quoting before you write it down. A quote under the wrong handle is thrown away exactly like an invented one.',
   'Cite a fact by fact_version_id with no quote. Figures are already verified; quoting them adds nothing.',
   'If the evidence does not answer something, emit the claim with status UNKNOWN and no evidence. That is a real answer here.',
-  'Never state a number that is not in the evidence. Arithmetic belongs to the analytics engine, not to you.',
+  // "Not in the evidence" used to be read as the whole snapshot, and a claim
+  // stated a figure that was in the lists but not in its own citations: the
+  // validator checks each claim against what it cites, and refused it.
+  "Every number in a statement must appear in that same claim's evidence: in one of its quotes, or in a figure it cites. A number that is elsewhere in the lists does not count until this claim cites it. Stating three years of cash flow means citing three figures; if you cannot cite a number, leave it out of the sentence.",
+  // Scoped to statements: valuation_assumptions must still propose a value it
+  // judged, and that value lives in the assumption, not in the claim text.
+  'In a statement, copy numbers; do not make them. No totals, differences, growth rates or shares you worked out yourself, and no "100%" for a share the text does not state. Arithmetic belongs to the analytics engine, not to you.',
 ].join('\n');
 
 /** Keeps a prompt bounded without a retrieval index. */

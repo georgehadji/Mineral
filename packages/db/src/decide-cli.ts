@@ -10,6 +10,7 @@ import { decide } from './decision-repository.ts';
  *
  *   pnpm decide "MP"            # the latest completed run for the company
  *   pnpm decide 7f1c...         # a specific run id
+ *   pnpm decide 7f1c... --again # a new thesis for a run that has one
  *
  * Needs the analytics service for the valuation step (pnpm analytics). Without
  * a full set of approved assumptions it writes the thesis anyway and says why
@@ -43,7 +44,7 @@ try {
     }
   }
 
-  const result = await decide(pool, { runId });
+  const result = await decide(pool, { runId, again: args.includes('--again') });
 
   if (result.reused) {
     console.log(`thesis v${result.versionNo} already exists for this run; nothing was written`);

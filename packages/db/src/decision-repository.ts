@@ -64,6 +64,12 @@ export interface DecideInput {
   cacheOnly?: boolean;
   calc?: CalcFn;
   analyticsUrl?: string;
+  /**
+   * Write a new thesis version even though this run already has one, taking the
+   * assumptions the policy approved last time. For after a fix to the decision
+   * layer itself; the run's claims are not re-verified.
+   */
+  again?: boolean;
 }
 
 export interface DecideResult {
@@ -138,7 +144,7 @@ interface ProposalRow extends PolicyInput {
  * join is inner on purpose: a proposal with no source claim has no run to
  * belong to, and the runtime refuses to write one in the first place.
  */
-async function loadProposals(pool: Pool, runId: UUID): Promise<ProposalRow[]> {
+async function loadProposals(pool: Pool, runId: UUID, again = false): Promise<ProposalRow[]> {
   const { rows } = await pool.query<{
     id: string;
     assumption_id: string;
@@ -158,9 +164,9 @@ async function loadProposals(pool: Pool, runId: UUID): Promise<ProposalRow[]> {
        from valuation.assumption_versions av
        join valuation.assumptions a on a.id = av.assumption_id
        join research.claims c on c.id = av.source_claim_id
-      where c.run_id = $1 and av.status = 'proposed'
+      where c.run_id = $1 and av.status = any($2::text[])
       order by a.id, av.version_no desc`,
-    [runId],
+    [runId, again ? ['proposed', 'approved'] : ['proposed']],
   );
   return rows.map((row) => ({
     assumptionVersionId: row.id,
@@ -283,7 +289,7 @@ async function recordPolicy(
       await pool.query(
         `update valuation.assumption_versions
             set status = 'approved', approved_by = 'policy', approved_at = now()
-          where id = $1`,
+          where id = $1 and status <> 'approved'`,
         [proposal.assumptionVersionId],
       );
     } else {
@@ -580,7 +586,7 @@ export async function decide(pool: Pool, input: DecideInput): Promise<DecideResu
       order by version_no desc limit 1`,
     [input.runId],
   );
-  if (existing.rows[0]) {
+  if (existing.rows[0] && !input.again) {
     const thesis = existing.rows[0];
     const counts = await pool.query<{ nodes: string; edges: string }>(
       `select (select count(*) from research.thesis_nodes where thesis_version_id = $1)::text as nodes,
@@ -605,7 +611,7 @@ export async function decide(pool: Pool, input: DecideInput): Promise<DecideResu
     };
   }
 
-  const proposals = await loadProposals(pool, input.runId);
+  const proposals = await loadProposals(pool, input.runId, input.again);
   const decisions = await step('assumption-policy', async () => {
     const verdicts = applyPolicy(proposals);
     await recordPolicy(pool, proposals, verdicts);

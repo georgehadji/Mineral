@@ -484,6 +484,20 @@ describe.skipIf(!url)('the decision layer', () => {
     expect(Number(rows[0]!.count)).toBe(1);
   });
 
+  it('writes a second thesis for the same run on request, valued on the approvals it already had', async () => {
+    const second = await decide(pool, { runId: firstRunId, calc, transport: firstTransport, apiKey: 'test-key', again: true });
+
+    expect(second.reused).toBe(false);
+    expect(second.calculationRunId).not.toBeNull();
+    expect(second.decisions).toHaveLength(Object.keys(GOOD_ASSUMPTIONS).length);
+
+    const { rows } = await pool.query<{ count: string }>(
+      `select count(*)::text as count from research.thesis_versions where research_run_id = $1`,
+      [firstRunId],
+    );
+    expect(Number(rows[0]!.count)).toBe(2);
+  });
+
   it('refuses an out-of-band assumption and writes the thesis without a valuation', async () => {
     const transport = stub({ assumptions: { ...GOOD_ASSUMPTIONS, discount_rate: 0.9 } });
     const runId = await research('2026-08-30', transport);

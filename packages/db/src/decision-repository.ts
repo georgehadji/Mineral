@@ -504,9 +504,11 @@ const SYNTHESIS_SYSTEM =
   'Every node that asserts something names what it rests on: claim_key for a finding, ' +
   'assumption_code for an approved assumption, from_valuation for the calculated valuation. ' +
   'Copy those identifiers exactly; a node naming something that is not listed is rejected.\n' +
-  'Set from_valuation only when a valuation appears below. When none was produced, that absence ' +
-  'is worth saying, but say it on a CONCLUSION node: a node claiming to rest on a valuation ' +
-  'that does not exist is rejected like any other dangling reference.\n' +
+  'Set from_valuation only when the Valuation section lists computed outputs. When it says no ' +
+  'valuation was produced, every node has from_valuation false, including a node that explains ' +
+  'why there is no valuation: that absence is worth saying, on a CONCLUSION node, but a node ' +
+  'claiming to rest on a valuation that does not exist is rejected like any other dangling ' +
+  'reference.\n' +
   'Include at least one CONCLUSION node and connect the graph with edges. Say ' +
   'insufficient_evidence when the findings do not support a direction: that is a real verdict ' +
   'here, not a failure.';
@@ -533,7 +535,9 @@ function renderAssumptions(approved: readonly ProposalRow[]): string {
 }
 
 function renderValuation(outcome: ValuationOutcome): string {
-  if (!outcome.response) return `No valuation was produced: ${outcome.skipped}.`;
+  if (!outcome.response) {
+    return `No valuation was produced: ${outcome.skipped}. No node may set from_valuation.`;
+  }
   return (
     `Method ${outcome.response.method}, engine ${outcome.response.engine} ` +
     `${outcome.response.engine_version}, currency ${outcome.response.currency}\n` +

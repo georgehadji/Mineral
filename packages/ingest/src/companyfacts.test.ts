@@ -32,6 +32,21 @@ describe('parseCompanyFacts', () => {
     expect(parsed.find((p) => p.code === 'total_assets')).toMatchObject({ asOfDate: '2024-12-31' });
   });
 
+  it('follows capex to the concept a filer moved it to', () => {
+    // Ramaco's shape: PP&E payments until early 2024, capital improvements after.
+    const parsed = parseCompanyFacts(
+      facts({
+        PaymentsToAcquirePropertyPlantAndEquipment: {
+          units: { USD: [entry({ start: '2023-01-01', end: '2023-12-31', val: 82904000, fy: 2023 })] },
+        },
+        PaymentsForCapitalImprovements: {
+          units: { USD: [entry({ start: '2025-01-01', end: '2025-12-31', val: 62781000, fy: 2025 })] },
+        },
+      }),
+    );
+    expect(parsed.filter((p) => p.code === 'capital_expenditure').map((p) => p.value)).toEqual([82904000, 62781000]);
+  });
+
   it('keeps the latest-filed value when a period is reported twice', () => {
     const parsed = parseCompanyFacts(
       facts({

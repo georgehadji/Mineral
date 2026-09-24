@@ -30,6 +30,13 @@ export const XBRL_CONCEPTS: readonly XbrlConcept[] = [
   c('ResearchAndDevelopmentExpense', 'research_and_development', 'Research and development', 'duration'),
   c('NetCashProvidedByUsedInOperatingActivities', 'operating_cash_flow', 'Operating cash flow', 'duration'),
   c('PaymentsToAcquirePropertyPlantAndEquipment', 'capital_expenditure', 'Capital expenditure', 'duration'),
+  // Filers move capex between these: Ramaco and NioCorp to capital improvements,
+  // USA Rare Earth to productive assets, Energy Fuels to "other" PP&E in 2026.
+  // None of the universe tags two of them for one period in one filing; a filer
+  // that did would have them as components, and the first listed would win.
+  c('PaymentsToAcquireProductiveAssets', 'capital_expenditure', 'Capital expenditure', 'duration'),
+  c('PaymentsForCapitalImprovements', 'capital_expenditure', 'Capital expenditure', 'duration'),
+  c('PaymentsToAcquireOtherPropertyPlantAndEquipment', 'capital_expenditure', 'Capital expenditure', 'duration'),
   c('Assets', 'total_assets', 'Total assets', 'instant'),
   c('Liabilities', 'total_liabilities', 'Total liabilities', 'instant'),
   c('StockholdersEquity', 'stockholders_equity', 'Stockholders equity', 'instant'),

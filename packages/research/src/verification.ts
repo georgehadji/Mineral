@@ -154,6 +154,15 @@ const NOT_QUANTITIES: readonly RegExp[] = [
 const withoutLabels = (text: string): string =>
   NOT_QUANTITIES.reduce((out, pattern) => out.replace(pattern, ' '), text);
 
+/**
+ * The quantities a statement asserts: its numbers, less years and the digits
+ * that name a date or a form. What the number check demands evidence for, and
+ * what the contradiction check compares.
+ */
+function statementFigures(statement: string): string[] {
+  return numbersIn(withoutLabels(statement)).filter((number) => !looksLikeAYear(number));
+}
+
 const SCALES: Readonly<Record<string, number>> = {
   thousand: 1e3,
   k: 1e3,
@@ -242,8 +251,7 @@ function checkNumbers(claim: VerifiableClaim): CheckResult {
       .map((scaled) => scaled.normalised),
   );
 
-  const missing = numbersIn(statement)
-    .filter((number) => !looksLikeAYear(number))
+  const missing = statementFigures(claim.statement)
     .filter((number) => !scaledHits.has(number))
     .filter((number) => !cited.has(number) && ![...cited].some((c) => c.startsWith(number)));
 
@@ -398,13 +406,29 @@ function checkContradictions(claims: VerifiableClaim[]): CheckResult[] {
       }
       continue;
     }
+
+    // Different words are not by themselves a different answer. business_model
+    // and risks both said three customers take about 34% of Ramaco's revenue,
+    // one at greater length, and failing both as contradicted refused two true
+    // claims. Without a model the one positive sign of agreement this rule can
+    // read is a figure every answer states; that is recorded as a warning and
+    // demotes nothing. Anything else -- different figures, or prose with no
+    // figure in common, like "produced 45,455 tons" against "produced nothing"
+    // -- stays a disagreement, as before.
+    // ponytail: one shared figure vouches for the rest, so "34% of $536.6m"
+    // against "34% of $540m" passes as a warning; compare the figures pairwise
+    // by meaning if that ever lets a real conflict through.
+    const figureSets = group.map((claim) => new Set(statementFigures(claim.statement)));
+    const anchored = [...figureSets[0]!].some((figure) => figureSets.every((set) => set.has(figure)));
     for (const claim of group) {
       results.push({
         type: 'contradiction',
         status: 'failed',
-        severity: 'error',
+        severity: anchored ? 'warning' : 'error',
         claimId: claim.claimId,
-        message: `${group.length} claims share the key ${key} and do not agree`,
+        message: anchored
+          ? `${group.length} claims answer ${key} in different words around the same figures`
+          : `${group.length} claims share the key ${key} and do not agree`,
         evidence: { claimKey: key, statements: [...statements] },
       });
     }

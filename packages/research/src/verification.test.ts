@@ -231,6 +231,30 @@ describe('contradiction on a shared claim key', () => {
     expect(verdict.overall).toBe('failed');
   });
 
+  // From the Ramaco run: two modules, one answer, two lengths of sentence.
+  it('records different wording around the same figure as a warning, not a contradiction', () => {
+    const verdict = verifyClaims([
+      claim({ statement: 'Three customers accounted for approximately 34% of total revenue in 2025.' }),
+      other({
+        statement:
+          'Revenue depends on a handful of buyers: sales to three customers were about 34% of ' +
+          'revenue, so losing one contract would be the visible trigger.',
+      }),
+    ]);
+    const contradictions = verdict.checks.filter((check) => check.type === 'contradiction');
+    expect(contradictions).toHaveLength(2);
+    expect(contradictions.every((check) => check.severity === 'warning')).toBe(true);
+  });
+
+  it('still flags two answers that state different figures', () => {
+    const verdict = verifyClaims([
+      claim({ statement: 'Three customers accounted for approximately 34% of total revenue.' }),
+      other({ statement: 'Three customers accounted for approximately 41% of total revenue.' }),
+    ]);
+    const contradictions = verdict.checks.filter((check) => check.type === 'contradiction');
+    expect(contradictions.every((check) => check.severity === 'error')).toBe(true);
+  });
+
   it('records agreement rather than silence when the same answer is recorded twice', () => {
     const verdict = verifyClaims([claim(), other({})]);
     const contradictions = verdict.checks.filter((check) => check.type === 'contradiction');

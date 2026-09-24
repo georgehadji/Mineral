@@ -54,6 +54,19 @@ the shell history would keep it. Vitest deliberately does not load it:
 database-backed tests stay opt-in per shell, so `pnpm check` is still
 hermetic on a machine that happens to have a `DATABASE_URL` in `.env`.
 
+On Windows, one command brings the whole thing up -- the database cluster, the
+analytics service and the web app -- starting only what is not already
+running, with analytics and web in windows of their own:
+
+```bash
+pnpm local
+```
+
+It expects a native PostgreSQL 16 cluster at `%USERPROFILE%\mineral-pgdata` on
+port 55432 (`scripts/start-local.ps1 -DataDir ... -Port ...` to point it
+elsewhere). Nothing here is a Windows service, so this is also what to run
+after a reboot; a cluster killed by a logoff recovers on its own.
+
 ## Entity resolution
 
 Apply the migration, then the issuer seed:

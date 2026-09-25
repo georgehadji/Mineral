@@ -32,11 +32,11 @@ stored (`request_storage_uri` is empty), so it cannot be proven.
 - uncertain: text was being changed: 51
 
 The texts those records were sent are now stored as prompt rows under their
-hashed labels (inserted 2026-09-25, nothing updated). The records themselves still
-name the legacy rows: repointing them rewrites history, and is left to the
-operator. `prompt-repoint-2026-09-25.sql` does it for the
-"names text it was not sent" records only, in one transaction, and
-`prompt-repoint-2026-09-25.undo.sql` puts every one of them back.
+hashed labels (inserted 2026-09-25). `prompt-repoint-2026-09-25.sql` points
+the "names text it was not sent" records at them, in one transaction; the
+operator approved it and it was applied on 2026-09-25, after which all 108
+named the text they were sent. `prompt-repoint-2026-09-25.undo.sql` puts every
+one of them back. The correct and uncertain records were not touched.
 
 ## Records naming text they were not sent
 

@@ -114,6 +114,27 @@ describe.skipIf(!url)('EDGAR ingestion', () => {
     expect(rows[0]?.count).toBe('2');
   });
 
+  it('keeps the standing version when new bytes carry the same text', async () => {
+    const text = 'Item 1. Business\n\nWe mine, separate and refine rare earths.';
+    const standing = await storeFiling(text);
+    // The same filing, re-rendered: different markup, not a word changed.
+    const rerendered = await ingestDocument(pool, {
+      externalId: accession,
+      canonicalUrl: `https://www.sec.gov/Archives/edgar/data/1801368/${run}/test.htm`,
+      documentType: '10-K',
+      title: `ingest test ${run}`,
+      content: `<html><!-- rendered ${run} -->${text}</html>`,
+      mimeType: 'text/html',
+      text,
+      subjectEntityId: companyId,
+      chunkTargetChars: 20,
+    });
+
+    expect(rerendered.created).toBe(false);
+    expect(rerendered.documentVersionId).toBe(standing.documentVersionId);
+    expect(rerendered.chunkCount).toBe(standing.chunkCount);
+  });
+
   it('promotes XBRL numbers as VERIFIED and cites the filing they came from', async () => {
     const filing = await storeFiling('Item 1. Business\n\nWe mine, separate and refine rare earths.');
     const companyFacts = await ingestDocument(pool, {

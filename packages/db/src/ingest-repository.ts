@@ -106,6 +106,33 @@ export async function ingestDocument(
     }
 
     const text = input.text ?? input.content;
+
+    // SEC re-renders a filing's HTML between fetches without changing a word:
+    // Energy Fuels' 10-Qs came back an hour apart as new bytes and identical
+    // text. A version per fetch would double every chunk a module can cite, so
+    // when the latest version already reads exactly this, it stands.
+    const unchanged = await client.query<{ id: string; version_no: number; content_hash: string; chunk_count: string }>(
+      `select dv.id, dv.version_no, dv.content_hash, count(dc.id)::text as chunk_count
+         from evidence.document_versions dv
+         left join evidence.document_chunks dc on dc.document_version_id = dv.id
+        where dv.document_id = $1
+          and dv.version_no = (select max(version_no) from evidence.document_versions where document_id = $1)
+          and md5(dv.raw_text) = md5($2)
+        group by dv.id, dv.version_no, dv.content_hash`,
+      [documentId, text],
+    );
+    const standing = unchanged.rows[0];
+    if (standing) {
+      return {
+        documentId,
+        documentVersionId: standing.id,
+        versionNo: standing.version_no,
+        contentHash: standing.content_hash,
+        created: false,
+        chunkCount: Number(standing.chunk_count),
+      };
+    }
+
     const inserted = await client.query<{ id: string; version_no: number }>(
       `insert into evidence.document_versions
          (document_id, content_hash, storage_uri, mime_type, byte_size, raw_text)

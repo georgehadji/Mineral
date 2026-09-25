@@ -48,10 +48,37 @@ export const XBRL_CONCEPTS: readonly XbrlConcept[] = [
   c('CashAndCashEquivalentsAtCarryingValue', 'cash_and_equivalents', 'Cash and equivalents', 'instant'),
   c('InventoryNet', 'inventory', 'Inventory, net', 'instant'),
   c('LongTermDebtNoncurrent', 'long_term_debt', 'Long-term debt, noncurrent', 'instant'),
+
+  // Foreign private issuers filing 20-F under IFRS (Critical Metals). A filer
+  // reports in one taxonomy, so these never compete with the us-gaap rows.
+  ifrs('Revenue', 'revenue', 'Revenue', 'duration'),
+  ifrs('CostOfSales', 'cost_of_revenue', 'Cost of revenue', 'duration'),
+  ifrs('GrossProfit', 'gross_profit', 'Gross profit', 'duration'),
+  ifrs('ProfitLossFromOperatingActivities', 'operating_income', 'Operating income', 'duration'),
+  // Attributable to the parent first, as NetIncomeLoss is; the consolidated
+  // total only where that is not tagged.
+  ifrs('ProfitLossAttributableToOwnersOfParent', 'net_income', 'Net income', 'duration'),
+  ifrs('ProfitLoss', 'net_income', 'Net income', 'duration'),
+  ifrs('ResearchAndDevelopmentExpense', 'research_and_development', 'Research and development', 'duration'),
+  ifrs('CashFlowsFromUsedInOperatingActivities', 'operating_cash_flow', 'Operating cash flow', 'duration'),
+  // PP&E only. Exploration and evaluation spend is a second component tagged
+  // alongside it in the same filings, and the first-listed rule would keep one
+  // of the two; summing components is a derivation, not a mapping.
+  ifrs('PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities', 'capital_expenditure', 'Capital expenditure', 'duration'),
+  ifrs('Assets', 'total_assets', 'Total assets', 'instant'),
+  ifrs('Liabilities', 'total_liabilities', 'Total liabilities', 'instant'),
+  ifrs('EquityAttributableToOwnersOfParent', 'stockholders_equity', 'Stockholders equity', 'instant'),
+  ifrs('Equity', 'stockholders_equity', 'Stockholders equity', 'instant'),
+  ifrs('CashAndCashEquivalents', 'cash_and_equivalents', 'Cash and equivalents', 'instant'),
+  ifrs('Inventories', 'inventory', 'Inventory, net', 'instant'),
 ];
 
 function c(concept: string, code: string, name: string, period: 'duration' | 'instant'): XbrlConcept {
   return { taxonomy: 'us-gaap', concept, code, name, period, canonicalUnit: 'USD' };
+}
+
+function ifrs(concept: string, code: string, name: string, period: 'duration' | 'instant'): XbrlConcept {
+  return { ...c(concept, code, name, period), taxonomy: 'ifrs-full' };
 }
 
 export interface FactDefinition {

@@ -65,6 +65,26 @@ describe('parseCompanyFacts', () => {
     ]);
   });
 
+  it('reads an IFRS filer, parent-attributable profit first', () => {
+    const parsed = parseCompanyFacts({
+      facts: {
+        'ifrs-full': {
+          CashFlowsFromUsedInOperatingActivities: {
+            units: { USD: [entry({ start: '2025-01-01', end: '2025-12-31', val: -9_100_000, form: '20-F' })] },
+          },
+          ProfitLoss: { units: { USD: [entry({ start: '2025-01-01', end: '2025-12-31', val: -30_000_000, form: '20-F' })] } },
+          ProfitLossAttributableToOwnersOfParent: {
+            units: { USD: [entry({ start: '2025-01-01', end: '2025-12-31', val: -28_500_000, form: '20-F' })] },
+          },
+        },
+      },
+    });
+    expect(Object.fromEntries(parsed.map((p) => [p.code, [p.concept, p.value]]))).toEqual({
+      net_income: ['ProfitLossAttributableToOwnersOfParent', -28_500_000],
+      operating_cash_flow: ['CashFlowsFromUsedInOperatingActivities', -9_100_000],
+    });
+  });
+
   it('keeps the latest-filed value when a period is reported twice', () => {
     const parsed = parseCompanyFacts(
       facts({

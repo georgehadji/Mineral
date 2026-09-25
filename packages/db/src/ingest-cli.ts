@@ -22,7 +22,7 @@ import {
 const args = process.argv.slice(2);
 const query = args[0];
 if (!query || query.startsWith('--')) {
-  console.error('usage: pnpm ingest "<company>" [--forms 10-K,10-Q] [--limit 2] [--since 2019-01-01]');
+  console.error('usage: pnpm ingest "<company>" [--forms 10-K,10-Q,20-F] [--limit 2] [--since 2019-01-01]');
   process.exit(2);
 }
 
@@ -30,7 +30,8 @@ const flag = (name: string): string | undefined => {
   const at = args.indexOf(`--${name}`);
   return at === -1 ? undefined : args[at + 1];
 };
-const forms = (flag('forms') ?? '10-K,10-Q').split(',').filter(Boolean);
+// 20-F is a foreign private issuer's annual report (Critical Metals).
+const forms = (flag('forms') ?? '10-K,10-Q,20-F').split(',').filter(Boolean);
 const limit = Number(flag('limit') ?? 2);
 const since = flag('since') ?? '2019-01-01';
 

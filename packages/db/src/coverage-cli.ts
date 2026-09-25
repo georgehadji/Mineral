@@ -14,8 +14,8 @@ import { createPool } from './client.ts';
  * went from PaymentsToAcquirePropertyPlantAndEquipment to
  * PaymentsForCapitalImprovements in 2024 -- and the old series just ends. A
  * figure is flagged when the latest filing that should carry it does not: the
- * latest 10-Q or 10-K for one ever reported quarterly, the latest 10-K for one
- * reported only annually. The suggestions are concepts in that filing that
+ * latest filing of any kind (10-K, 10-Q, 20-F, 6-K) for one ever reported in an
+ * interim, the latest annual report for one reported only annually. The suggestions are concepts in that filing that
  * carry the same value for the same period somewhere in the history, which is
  * what a filer restating last year's comparative under the new name leaves.
  */
@@ -30,7 +30,9 @@ interface Entry {
 }
 type Concepts = Record<string, { units?: Record<string, Entry[]> }>;
 
-const FORMS = new Set(['10-K', '10-Q']);
+const ANNUAL = ['10-K', '20-F'];
+const ALL = [...ANNUAL, '10-Q', '6-K'];
+const FORMS = new Set(ALL);
 
 const pool = createPool();
 try {
@@ -46,7 +48,9 @@ try {
   let flagged = 0;
 
   for (const { name, body } of rows.sort((a, b) => a.name.localeCompare(b.name))) {
-    const gaap = ((JSON.parse(body) as { facts?: Record<string, Concepts> }).facts?.['us-gaap'] ?? {}) as Concepts;
+    // A filer reports in one taxonomy; us-gaap wins the rare shared name.
+    const taxonomies = (JSON.parse(body) as { facts?: Record<string, Concepts> }).facts ?? {};
+    const gaap: Concepts = { ...taxonomies['ifrs-full'], ...taxonomies['us-gaap'] };
     const entriesOf = (concept: string) =>
       Object.values(gaap[concept]?.units ?? {})
         .flat()
@@ -54,8 +58,8 @@ try {
     const all = Object.keys(gaap).flatMap(entriesOf);
     const latest = (forms: string[]) =>
       all.filter((e) => forms.includes(e.form!)).sort((a, b) => b.filed!.localeCompare(a.filed!))[0];
-    if (!latest(['10-K', '10-Q'])) {
-      console.log(`${name}: no 10-K or 10-Q in its companyfacts (a foreign filer?)`);
+    if (!latest(ALL)) {
+      console.log(`${name}: no ${ALL.join(', ')} in its companyfacts`);
       continue;
     }
 
@@ -68,8 +72,8 @@ try {
         never.push(code);
         continue;
       }
-      const quarterly = entries.some((e) => e.form === '10-Q');
-      const expected = latest(quarterly ? ['10-K', '10-Q'] : ['10-K'])!;
+      const interim = entries.some((e) => !ANNUAL.includes(e.form!));
+      const expected = latest(interim ? ALL : ANNUAL)!;
       if (entries.some((e) => e.accn === expected.accn)) continue;
 
       const lastEnd = entries.map((e) => e.end!).sort().at(-1);

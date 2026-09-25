@@ -23,6 +23,7 @@
     "decide": "node --env-file-if-exists=.env packages/db/src/decide-cli.ts",
     "monitor": "node --env-file-if-exists=.env packages/db/src/monitor-cli.ts",
     "chain": "node --env-file-if-exists=.env packages/db/src/chain-cli.ts",
+    "coverage": "node --env-file-if-exists=.env packages/db/src/coverage-cli.ts",
     "eval": "node --env-file-if-exists=.env evals/src/run.ts",
     "analytics": "uv run --directory services/analytics uvicorn mineral_analytics.api:app --port 8000",
     "db:seed": "psql -d \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f packages/db/seeds/001-rare-earth-issuers.sql -f packages/db/seeds/002-supply-chain-ontology.sql -f packages/db/seeds/003-facilities.sql",

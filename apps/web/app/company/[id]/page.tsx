@@ -283,6 +283,13 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
           <div className="k">promoted facts</div>
         </div>
       </div>
+      {evidence.promotedFacts === 0 && (
+        <p className="sub">
+          No financial figures on record. They are read from the XBRL data a company files with the
+          SEC; one that files none there, such as a company listed only outside the US, has none to
+          show until another source is added.
+        </p>
+      )}
       {evidence.claimsByStatus.length > 0 && (
         <p className="sub">
           {evidence.claimsByStatus.map((row) => `${row.count} ${row.status}`).join(' · ')}

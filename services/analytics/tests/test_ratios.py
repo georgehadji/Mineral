@@ -18,7 +18,7 @@ from mineral_analytics.ratios import (
 
 
 def test_engine_version_is_recorded():
-    assert ENGINE_VERSION == "0.3.0"
+    assert ENGINE_VERSION == "0.4.0"
 
 
 def test_gross_margin():

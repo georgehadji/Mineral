@@ -116,6 +116,12 @@ latest-filed value per period, and the filing itself as the cited source. The
 epistemic ceiling is the same one claims obey — source tier caps status, so a
 tier-1 filing is what makes `VERIFIED` available here at all.
 
+Filers move a figure to another concept without notice, and the old series
+simply ends: Ramaco's capex moved to `PaymentsForCapitalImprovements` in 2024.
+`pnpm coverage` reads the stored company facts and lists each mapped figure
+the latest filing no longer carries under a mapped concept, with the concepts
+that carry the same value for the same period in that filer's history.
+
 ## Analytics
 
 Every formula is a pure function with no network, no database and no model in

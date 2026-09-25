@@ -38,8 +38,12 @@ cd services/analytics && uv sync --extra dev && uv run pytest
 ```
 
 `pnpm check` runs the TypeScript typecheck and the Vitest suite. Database-backed
-tests are skipped unless `DATABASE_URL` is set, so the default run is hermetic.
-Verified locally: 218 hermetic tests, 285 with a database, and 85 Python tests.
+tests are skipped unless `TEST_DATABASE_URL` is set, so the default run is
+hermetic. They never read `DATABASE_URL`: they delete what they plant by
+company, and the companies are real members of the universe, so they refuse any
+database whose name does not end in `_test`. `pnpm test:db` rebuilds that
+database from the migrations and seeds.
+Verified locally: 298 tests with a database, and 85 Python tests.
 
 Configuration lives in `.env`, which Git ignores. Copy the example and fill
 in what you have:
@@ -50,9 +54,9 @@ cp .env.example .env
 
 The CLIs load it themselves (`node --env-file-if-exists=.env`) and dbmate
 reads it natively, so a credential never has to be typed at a prompt where
-the shell history would keep it. Vitest deliberately does not load it:
-database-backed tests stay opt-in per shell, so `pnpm check` is still
-hermetic on a machine that happens to have a `DATABASE_URL` in `.env`.
+the shell history would keep it. Vitest reads one key from it,
+`TEST_DATABASE_URL`, and ignores the rest, so a model key in `.env` never
+turns a test run into a paid one.
 
 On Windows, one command brings the whole thing up -- the database cluster, the
 analytics service and the web app -- starting only what is not already

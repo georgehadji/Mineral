@@ -39,7 +39,7 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_PASSWORD: mineral
-          POSTGRES_DB: mineral
+          POSTGRES_DB: mineral_test
         ports:
           - 5432:5432
         options: >-
@@ -47,7 +47,7 @@ jobs:
           --health-timeout 3s --health-retries 10
     env:
       PGPASSWORD: mineral
-      PSQL: psql -h localhost -U postgres -d mineral -v ON_ERROR_STOP=1
+      PSQL: psql -h localhost -U postgres -d mineral_test -v ON_ERROR_STOP=1
     steps:
       - uses: actions/checkout@v4
       - name: apply migrations
@@ -80,7 +80,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: integration tests against the seeded database
         env:
-          DATABASE_URL: postgres://postgres:mineral@localhost:5432/mineral
+          TEST_DATABASE_URL: postgres://postgres:mineral@localhost:5432/mineral_test
         run: pnpm test
 
   evals:

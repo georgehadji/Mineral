@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p apps/web/tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:db": "node --env-file-if-exists=.env packages/db/src/test-db-cli.ts",
     "db:up": "dbmate --migrations-dir packages/db/migrations up",
     "db:down": "dbmate --migrations-dir packages/db/migrations down",
     "check": "pnpm typecheck && pnpm test",

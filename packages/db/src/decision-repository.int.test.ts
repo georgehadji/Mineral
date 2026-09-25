@@ -605,4 +605,13 @@ describe.skipIf(!url)('the decision layer', () => {
 
     expect(base).toBe(60_000_000);
   });
+
+  it('values nothing when the latest year has operating cash flow but no capex', async () => {
+    await plantFacts([['operating_cash_flow', 120_000_000]], 2027);
+
+    const result = await decide(pool, { runId: firstRunId, calc, transport: firstTransport, apiKey: 'test-key', again: true });
+
+    expect(result.calculationRunId).toBeNull();
+    expect(result.valuationSkipped).toMatch(/no capital_expenditure filed for the same year/);
+  });
 });

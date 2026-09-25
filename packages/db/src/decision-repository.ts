@@ -435,13 +435,19 @@ async function runValuation(
   }
 
   const facts = await withFreeCashFlow(pool, params.subjectId, params.calc);
-  const baseCode = BASE_CASH_FLOW_CODES.find((code) => facts.has(code));
-  const base = baseCode ? facts.get(baseCode)! : undefined;
+  // Free cash flow only. Operating cash flow is what capex is paid out of, and
+  // projecting it as if it were the owners' leaves out the spending a miner
+  // cannot skip; with no capex for the year there is nothing honest to project.
+  const baseCode = 'free_cash_flow';
+  const base = facts.get(baseCode);
   if (!base) {
+    const flow = facts.get('operating_cash_flow');
     return {
       calculationRunId: null,
       response: null,
-      skipped: `no promoted annual ${BASE_CASH_FLOW_CODES.join(' or ')} fact to project from`,
+      skipped: flow
+        ? `the latest annual operating_cash_flow (to ${flow.periodEnd}) has no capital_expenditure filed for the same year, so there is no free cash flow to project`
+        : `no promoted annual ${BASE_CASH_FLOW_CODES.join(' or ')} fact to project from`,
     };
   }
   // Growth applied to a loss grows the loss, and the result reads like a

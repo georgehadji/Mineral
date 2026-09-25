@@ -47,21 +47,39 @@ describe('parseCompanyFacts', () => {
     expect(parsed.filter((p) => p.code === 'capital_expenditure').map((p) => p.value)).toEqual([82904000, 62781000]);
   });
 
-  it("reads total equity only where the parent's equity is not tagged", () => {
+  it("keeps the parent's equity and total equity apart, even when a later filing has only the total", () => {
     const including = 'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest';
     const parsed = parseCompanyFacts(
       facts({
         StockholdersEquity: { units: { USD: [entry({ end: '2024-12-31', val: 678405000 })] } },
+        // Energy Fuels' shape: a later equity statement tags only the total.
         [including]: {
+          units: { USD: [entry({ end: '2024-12-31', val: 682570000, filed: '2025-08-05', form: '10-Q' })] },
+        },
+      }),
+    );
+    const byCode = Object.fromEntries(parsed.map((p) => [p.code, p.value]));
+    expect(byCode).toEqual({ stockholders_equity: 678405000, total_equity: 682570000 });
+  });
+
+  it('takes total debt from LongTermDebt, and the carrying amount only where that is missing', () => {
+    const parsed = parseCompanyFacts(
+      facts({
+        LongTermDebt: { units: { USD: [entry({ end: '2025-12-31', val: 998741000 })] } },
+        DebtInstrumentCarryingAmount: {
           units: {
-            USD: [entry({ end: '2024-12-31', val: 682570000 }), entry({ end: '2023-12-31', val: 494286000 })],
+            USD: [
+              // Filed later than the LongTermDebt figure, and still the fallback.
+              entry({ end: '2025-12-31', val: 1080292000, filed: '2026-08-05', form: '10-Q' }),
+              entry({ end: '2024-12-31', val: 451417000 }),
+            ],
           },
         },
       }),
     );
-    expect(parsed.filter((p) => p.code === 'stockholders_equity').map((p) => [p.asOfDate, p.value])).toEqual([
-      ['2023-12-31', 494286000],
-      ['2024-12-31', 678405000],
+    expect(parsed.filter((p) => p.code === 'total_debt').map((p) => [p.asOfDate, p.value])).toEqual([
+      ['2024-12-31', 451417000],
+      ['2025-12-31', 998741000],
     ]);
   });
 

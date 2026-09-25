@@ -42,12 +42,21 @@ export const XBRL_CONCEPTS: readonly XbrlConcept[] = [
   c('Assets', 'total_assets', 'Total assets', 'instant'),
   c('Liabilities', 'total_liabilities', 'Total liabilities', 'instant'),
   c('StockholdersEquity', 'stockholders_equity', 'Stockholders equity', 'instant'),
-  // Total equity, noncontrolling interest included: USA Rare Earth reports only
-  // this since 2025. Listed second, so a filer tagging both keeps the parent's.
-  c('StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest', 'stockholders_equity', 'Stockholders equity', 'instant'),
+  // Total equity, noncontrolling interest included, as a figure of its own.
+  // Mapped as a fallback for the parent's equity it mixed two measures: Energy
+  // Fuels tags the parent's on its balance sheets and the total in its later
+  // equity statements, and the later filing replaced 27 parent figures with
+  // totals. USA Rare Earth reports only this since its 2025 merger.
+  c('StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest', 'total_equity', 'Total equity', 'instant'),
   c('CashAndCashEquivalentsAtCarryingValue', 'cash_and_equivalents', 'Cash and equivalents', 'instant'),
   c('InventoryNet', 'inventory', 'Inventory, net', 'instant'),
   c('LongTermDebtNoncurrent', 'long_term_debt', 'Long-term debt, noncurrent', 'instant'),
+  // Debt, current portion included: what net debt subtracts cash from. MP and
+  // Energy Fuels tag LongTermDebt; Ramaco carries its notes only as the
+  // instruments' carrying amount, which the others also tag and which loses to
+  // LongTermDebt in the same filing. Leases are not debt here.
+  c('LongTermDebt', 'total_debt', 'Total debt', 'instant'),
+  c('DebtInstrumentCarryingAmount', 'total_debt', 'Total debt', 'instant'),
 
   // Foreign private issuers filing 20-F under IFRS (Critical Metals). A filer
   // reports in one taxonomy, so these never compete with the us-gaap rows.
@@ -68,9 +77,10 @@ export const XBRL_CONCEPTS: readonly XbrlConcept[] = [
   ifrs('Assets', 'total_assets', 'Total assets', 'instant'),
   ifrs('Liabilities', 'total_liabilities', 'Total liabilities', 'instant'),
   ifrs('EquityAttributableToOwnersOfParent', 'stockholders_equity', 'Stockholders equity', 'instant'),
-  ifrs('Equity', 'stockholders_equity', 'Stockholders equity', 'instant'),
+  ifrs('Equity', 'total_equity', 'Total equity', 'instant'),
   ifrs('CashAndCashEquivalents', 'cash_and_equivalents', 'Cash and equivalents', 'instant'),
   ifrs('Inventories', 'inventory', 'Inventory, net', 'instant'),
+  ifrs('Borrowings', 'total_debt', 'Total debt', 'instant'),
 ];
 
 function c(concept: string, code: string, name: string, period: 'duration' | 'instant'): XbrlConcept {
@@ -181,14 +191,20 @@ export function parseCompanyFacts(
     });
 }
 
-/** Later filing wins; then the preferred concept; then the higher accession. */
+/**
+ * The preferred concept; then, within it, the later filing; then the higher
+ * accession. Filing date first let a later filing's fallback concept replace
+ * the preferred one for a period both covered, which mixes two measures in one
+ * series: Energy Fuels' later equity statements would have swapped 27 of its
+ * balance-sheet equity figures for totals including noncontrolling interest.
+ */
 function wins(
   candidate: XbrlFactCandidate,
   precedence: number,
   held: { candidate: XbrlFactCandidate; precedence: number },
 ): boolean {
-  if (candidate.filedAt !== held.candidate.filedAt) return candidate.filedAt > held.candidate.filedAt;
   if (precedence !== held.precedence) return precedence < held.precedence;
+  if (candidate.filedAt !== held.candidate.filedAt) return candidate.filedAt > held.candidate.filedAt;
   return candidate.accession > held.candidate.accession;
 }
 

@@ -43,7 +43,7 @@ hermetic. They never read `DATABASE_URL`: they delete what they plant by
 company, and the companies are real members of the universe, so they refuse any
 database whose name does not end in `_test`. `pnpm test:db` rebuilds that
 database from the migrations and seeds.
-Verified locally: 298 tests with a database, and 85 Python tests.
+Verified locally: 302 tests with a database, and 85 Python tests.
 
 Configuration lives in `.env`, which Git ignores. Copy the example and fill
 in what you have:
@@ -101,17 +101,19 @@ SEC_USER_AGENT=Your Name your.address@example.com
 ```
 
 ```bash
-pnpm ingest "MP" --forms 10-K,10-Q --limit 2 --since 2019-01-01
+pnpm ingest "MP" --forms 10-K,10-Q,20-F --limit 2 --since 2019-01-01
 ```
 
 Filings are stored as immutable document versions addressed by the SHA-256 of
 the bytes as fetched. Re-running the same ingest writes nothing: identical
-bytes hit the content hash and identical numbers match the current fact
-revision. Different bytes add a version rather than replacing one, and a
-restated number supersedes its predecessor instead of overwriting it.
+bytes hit the content hash, bytes re-rendered around the same text keep the
+standing version, and identical numbers match the current fact revision.
+Changed text adds a version rather than replacing one, and a restated number
+supersedes its predecessor instead of overwriting it.
 
 XBRL company facts reach the record as promoted `VERIFIED` revisions without
-passing through a language model: an explicit `us-gaap` concept map, the
+passing through a language model: an explicit concept map (`us-gaap`, and
+`ifrs-full` for foreign issuers filing 20-F), the
 latest-filed value per period, and the filing itself as the cited source. The
 epistemic ceiling is the same one claims obey — source tier caps status, so a
 tier-1 filing is what makes `VERIFIED` available here at all.

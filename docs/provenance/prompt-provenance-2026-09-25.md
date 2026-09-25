@@ -35,7 +35,8 @@ The texts those records were sent are now stored as prompt rows under their
 hashed labels (inserted 2026-09-25, nothing updated). The records themselves still
 name the legacy rows: repointing them rewrites history, and is left to the
 operator. `prompt-repoint-2026-09-25.sql` does it for the
-"names text it was not sent" records only, in one transaction.
+"names text it was not sent" records only, in one transaction, and
+`prompt-repoint-2026-09-25.undo.sql` puts every one of them back.
 
 ## Records naming text they were not sent
 

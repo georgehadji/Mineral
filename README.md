@@ -43,7 +43,7 @@ hermetic. They never read `DATABASE_URL`: they delete what they plant by
 company, and the companies are real members of the universe, so they refuse any
 database whose name does not end in `_test`. `pnpm test:db` rebuilds that
 database from the migrations and seeds.
-Verified locally: 302 tests with a database, and 85 Python tests.
+Verified locally: 304 tests with a database, and 85 Python tests.
 
 Configuration lives in `.env`, which Git ignores. Copy the example and fill
 in what you have:

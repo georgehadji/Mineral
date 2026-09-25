@@ -213,7 +213,9 @@ async function loadValuationFacts(pool: Pool, subjectId: UUID): Promise<Map<stri
         -- year. The latest period is often a year-to-date: Ramaco's was six
         -- months to 2026-06-30, and projecting it as annual halved the base.
         and (fd.code <> all($3::text[]) or f.period_end - f.period_start between 350 and 380)
-      order by fd.code, f.period_end desc nulls last, f.as_of_date desc nulls last`,
+      -- A balance (net debt) has an as-of date and no period end; sorting on
+      -- period_end alone would rank every balance below any flow-shaped row.
+      order by fd.code, coalesce(f.period_end, f.as_of_date) desc nulls last, f.as_of_date desc nulls last`,
     [subjectId, codes, BASE_CASH_FLOW_CODES],
   );
   return new Map(
@@ -418,6 +420,56 @@ async function withFreeCashFlow(pool: Pool, subjectId: UUID, calc: CalcFn): Prom
   return loadValuationFacts(pool, subjectId);
 }
 
+/**
+ * The valuation facts, with net debt at the latest balance date that carries
+ * both debt and cash. Computed by the engine and recorded like free cash flow,
+ * so the equity bridge links back to both filings. Without such a date there
+ * is no net debt, and the engine then reports no equity value at all: a
+ * company's debt is not assumed to be zero because it was not found.
+ */
+async function withNetDebt(
+  pool: Pool,
+  subjectId: UUID,
+  calc: CalcFn,
+  facts: Map<string, FactRow>,
+): Promise<Map<string, FactRow>> {
+  const { rows } = await pool.query<{
+    as_of_date: string;
+    debt_id: string;
+    debt: number;
+    cash_id: string;
+    cash: number;
+    currency: string | null;
+  }>(
+    `select d.as_of_date::text, dv.id as debt_id, dv.numeric_value::float8 as debt,
+            cv.id as cash_id, cv.numeric_value::float8 as cash, dv.currency
+       from evidence.facts d
+       join evidence.fact_definitions dd on dd.id = d.fact_definition_id and dd.code = 'total_debt'
+       join evidence.fact_versions dv on dv.id = d.current_version_id
+       join evidence.facts c on c.entity_id = d.entity_id and c.as_of_date = d.as_of_date
+       join evidence.fact_definitions cd on cd.id = c.fact_definition_id and cd.code = 'cash_and_equivalents'
+       join evidence.fact_versions cv on cv.id = c.current_version_id
+      where d.entity_id = $1 and dv.numeric_value is not null and cv.numeric_value is not null
+      order by d.as_of_date desc
+      limit 1`,
+    [subjectId],
+  );
+  const balance = rows[0];
+  if (!balance) return facts;
+  if (facts.get('net_debt')?.asOfDate === balance.as_of_date) return facts;
+
+  const response = CalcResponseSchema.parse(
+    await calc('ratios', { total_debt: balance.debt, cash_and_equivalents: balance.cash }, balance.currency ?? 'USD'),
+  );
+  await recordCalculation(pool, {
+    subjectEntityId: subjectId,
+    response,
+    inputFactVersions: { total_debt: balance.debt_id, cash_and_equivalents: balance.cash_id },
+    period: { periodStart: null, periodEnd: null, asOfDate: balance.as_of_date },
+  });
+  return loadValuationFacts(pool, subjectId);
+}
+
 async function runValuation(
   pool: Pool,
   params: {
@@ -473,8 +525,9 @@ async function runValuation(
     terminal_growth: byCode.get('terminal_growth')!.value,
   };
   const inputFactVersions: Record<string, UUID> = { base_cash_flow: base.factVersionId };
+  const bridged = await withNetDebt(pool, params.subjectId, params.calc, facts);
   for (const code of OPTIONAL_FACT_CODES) {
-    const fact = facts.get(code);
+    const fact = bridged.get(code);
     if (!fact) continue;
     inputs[code] = fact.value;
     inputFactVersions[code] = fact.factVersionId;

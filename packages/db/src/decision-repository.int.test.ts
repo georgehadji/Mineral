@@ -300,6 +300,7 @@ describe.skipIf(!url)('the decision layer', () => {
       ['net_debt', 35_000_000],
     ],
     year = 2025,
+    shape: 'flow' | 'balance' = 'flow',
   ): Promise<void> {
     await inTransaction(pool, async (client) => {
       const definitions = await ensureFactDefinitions(
@@ -309,10 +310,14 @@ describe.skipIf(!url)('the decision layer', () => {
       for (const [code, value] of figures) {
         const definitionId = definitions.get(code);
         if (!definitionId) throw new Error(`no fact definition for ${code}`);
-        const factId = await upsertFact(client, companyId, definitionId, {
-          periodStart: `${year}-01-01`,
-          periodEnd: `${year}-12-31`,
-        });
+        const factId = await upsertFact(
+          client,
+          companyId,
+          definitionId,
+          shape === 'flow'
+            ? { periodStart: `${year}-01-01`, periodEnd: `${year}-12-31` }
+            : { asOfDate: `${year}-12-31` },
+        );
         // Invariant C.1: a promoted revision names the document it was read
         // from, unless it was calculated or came from a data provider.
         const { rows } = await client.query<{ id: string }>(
@@ -613,5 +618,50 @@ describe.skipIf(!url)('the decision layer', () => {
 
     expect(result.calculationRunId).toBeNull();
     expect(result.valuationSkipped).toMatch(/no capital_expenditure filed for the same year/);
+  });
+
+  it('bridges to equity with net debt from the latest balance carrying debt and cash', async () => {
+    await plantFacts(
+      [
+        ['operating_cash_flow', 150_000_000],
+        ['capital_expenditure', 50_000_000],
+      ],
+      2028,
+    );
+    await plantFacts(
+      [
+        ['total_debt', 300_000_000],
+        ['cash_and_equivalents', 120_000_000],
+      ],
+      2028,
+      'balance',
+    );
+    let dcfInputs: Record<string, unknown> = {};
+    const engine: CalcFn = async (method, inputs, currency) => {
+      if (method !== 'ratios') {
+        dcfInputs = inputs;
+        return calc(method, inputs, currency);
+      }
+      const [code, value, from] =
+        'total_debt' in inputs
+          ? ['net_debt', (inputs.total_debt as number) - (inputs.cash_and_equivalents as number), ['total_debt', 'cash_and_equivalents']]
+          : ['free_cash_flow', (inputs.operating_cash_flow as number) - (inputs.capital_expenditure as number), ['operating_cash_flow', 'capital_expenditure']];
+      return {
+        method,
+        engine: 'ratios',
+        engine_version: '1.0.0',
+        currency,
+        inputs,
+        outputs: [{ code, name: code, value, unit: currency, inputs: from }],
+        detail: {},
+      };
+    };
+
+    const result = await decide(pool, { runId: firstRunId, calc: engine, transport: firstTransport, apiKey: 'test-key', again: true });
+
+    expect(result.calculationRunId).not.toBeNull();
+    expect(dcfInputs.base_cash_flow).toBe(100_000_000);
+    // Not the 35M planted for 2025: the bridge is the latest balance, 300M less 120M.
+    expect(dcfInputs.net_debt).toBe(180_000_000);
   });
 });

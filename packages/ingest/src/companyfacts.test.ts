@@ -47,6 +47,24 @@ describe('parseCompanyFacts', () => {
     expect(parsed.filter((p) => p.code === 'capital_expenditure').map((p) => p.value)).toEqual([82904000, 62781000]);
   });
 
+  it("reads total equity only where the parent's equity is not tagged", () => {
+    const including = 'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest';
+    const parsed = parseCompanyFacts(
+      facts({
+        StockholdersEquity: { units: { USD: [entry({ end: '2024-12-31', val: 678405000 })] } },
+        [including]: {
+          units: {
+            USD: [entry({ end: '2024-12-31', val: 682570000 }), entry({ end: '2023-12-31', val: 494286000 })],
+          },
+        },
+      }),
+    );
+    expect(parsed.filter((p) => p.code === 'stockholders_equity').map((p) => [p.asOfDate, p.value])).toEqual([
+      ['2023-12-31', 494286000],
+      ['2024-12-31', 678405000],
+    ]);
+  });
+
   it('keeps the latest-filed value when a period is reported twice', () => {
     const parsed = parseCompanyFacts(
       facts({

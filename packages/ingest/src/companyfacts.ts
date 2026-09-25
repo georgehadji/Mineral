@@ -23,6 +23,8 @@ export interface XbrlConcept {
 export const XBRL_CONCEPTS: readonly XbrlConcept[] = [
   c('RevenueFromContractWithCustomerExcludingAssessedTax', 'revenue', 'Revenue', 'duration'),
   c('Revenues', 'revenue', 'Revenue', 'duration'),
+  // Ramaco's revenue since its 2026 10-Qs. pnpm coverage finds these moves.
+  c('RevenueFromContractWithCustomerIncludingAssessedTax', 'revenue', 'Revenue', 'duration'),
   c('CostOfRevenue', 'cost_of_revenue', 'Cost of revenue', 'duration'),
   c('GrossProfit', 'gross_profit', 'Gross profit', 'duration'),
   c('OperatingIncomeLoss', 'operating_income', 'Operating income', 'duration'),
@@ -40,6 +42,9 @@ export const XBRL_CONCEPTS: readonly XbrlConcept[] = [
   c('Assets', 'total_assets', 'Total assets', 'instant'),
   c('Liabilities', 'total_liabilities', 'Total liabilities', 'instant'),
   c('StockholdersEquity', 'stockholders_equity', 'Stockholders equity', 'instant'),
+  // Total equity, noncontrolling interest included: USA Rare Earth reports only
+  // this since 2025. Listed second, so a filer tagging both keeps the parent's.
+  c('StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest', 'stockholders_equity', 'Stockholders equity', 'instant'),
   c('CashAndCashEquivalentsAtCarryingValue', 'cash_and_equivalents', 'Cash and equivalents', 'instant'),
   c('InventoryNet', 'inventory', 'Inventory, net', 'instant'),
   c('LongTermDebtNoncurrent', 'long_term_debt', 'Long-term debt, noncurrent', 'instant'),
